@@ -192,7 +192,7 @@ async function runCollection(mode) {
     // Re-read .env
     require('dotenv').config({ override: true });
 
-    const db = initSchema();
+    const db = getDb();
     const client = new JiraClient();
     const jql = process.env.JIRA_JQL || null;
 
@@ -275,7 +275,7 @@ app.get('/api/queries/:name', (req, res) => {
   if (!query) return res.status(404).json({ error: 'Query not found' });
 
   try {
-    const db = initSchema();
+    const db = getDb();
     const rows = db.prepare(query.sql).all();
     res.json({ title: query.title, sql: query.sql.trim(), rows, count: rows.length });
   } catch (err) {
@@ -294,7 +294,7 @@ app.post('/api/queries/custom', (req, res) => {
   }
 
   try {
-    const db = initSchema();
+    const db = getDb();
     const rows = db.prepare(sql).all();
     res.json({ rows, count: rows.length });
   } catch (err) {
@@ -314,7 +314,7 @@ app.get('/api/audit-queries/:name', (req, res) => {
   const query = AUDIT_QUERIES[req.params.name];
   if (!query) return res.status(404).json({ error: 'Query not found' });
   try {
-    const db = initSchema();
+    const db = getDb();
     const rows = db.prepare(query.sql).all();
     res.json({ title: query.title, description: query.description, category: query.category, sql: query.sql.trim(), rows, count: rows.length });
   } catch (err) {
@@ -333,7 +333,7 @@ app.post('/api/export-excel', (req, res) => {
   }
 
   try {
-    const db = initSchema();
+    const db = getDb();
     const rows = db.prepare(sql).all();
     // Remove raw_json column
     const cleaned = rows.map(({ raw_json, ...rest }) => rest);
@@ -365,7 +365,7 @@ app.post('/api/export-excel-multi', (req, res) => {
   if (!queries || !queries.length) return res.status(400).json({ error: 'No queries provided' });
 
   try {
-    const db = initSchema();
+    const db = getDb();
     const wb = XLSX.utils.book_new();
 
     for (const q of queries) {
@@ -398,7 +398,7 @@ app.post('/api/export-excel-multi', (req, res) => {
 // ── DB Stats ───────────────────────────────────────────
 app.get('/api/stats', (req, res) => {
   try {
-    const db = initSchema();
+    const db = getDb();
     const tables = db.prepare(`
       SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'
       ORDER BY name
@@ -432,7 +432,7 @@ app.get('/api/stats', (req, res) => {
 // ── DB Tables Schema ───────────────────────────────────
 app.get('/api/schema', (req, res) => {
   try {
-    const db = initSchema();
+    const db = getDb();
     const tables = db.prepare(`
       SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'
       ORDER BY name
@@ -446,7 +446,7 @@ app.get('/api/schema', (req, res) => {
 // ── Export ──────────────────────────────────────────────
 app.get('/api/export/:table', (req, res) => {
   try {
-    const db = initSchema();
+    const db = getDb();
     const table = req.params.table.replace(/[^a-zA-Z0-9_]/g, '');
     const format = req.query.format || 'json';
     const rows = db.prepare(`SELECT * FROM "${table}"`).all();
@@ -475,6 +475,10 @@ app.get('/api/export/:table', (req, res) => {
 
 // ── Start ──────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`\n  Jira Collector UI: http://localhost:${PORT}\n`);
-});
+
+(async () => {
+  await initSchema();
+  app.listen(PORT, () => {
+    console.log(`\n  Jira Collector UI: http://localhost:${PORT}\n`);
+  });
+})();

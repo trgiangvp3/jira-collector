@@ -38,7 +38,7 @@ async function main() {
   console.log();
 
   // Init
-  const db = initSchema();
+  const db = await initSchema();
   const client = new JiraClient();
   const jql = process.env.JIRA_JQL || null;
 

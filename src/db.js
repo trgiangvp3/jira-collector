@@ -1,23 +1,187 @@
-const Database = require('better-sqlite3');
+const initSqlJs = require('sql.js');
+const fs = require('fs');
 const path = require('path');
 
 const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'jira_data.db');
 
-let db;
+let db = null;
+let sqliteDb = null;
+let saveTimer = null;
 
-function getDb() {
-  if (!db) {
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
+/**
+ * Wrapper that provides a better-sqlite3 compatible API on top of sql.js
+ * So all existing code (collectors, queries, server) works without changes.
+ */
+class SqlJsWrapper {
+  constructor(rawDb) {
+    this.rawDb = rawDb;
   }
+
+  exec(sql) {
+    this.rawDb.run(sql);
+    scheduleSave();
+  }
+
+  pragma(str) {
+    try { this.rawDb.run(`PRAGMA ${str}`); } catch { /* ignore unsupported pragmas */ }
+  }
+
+  prepare(sql) {
+    return new StatementWrapper(this.rawDb, sql);
+  }
+
+  transaction(fn) {
+    return (...args) => {
+      this.rawDb.run('BEGIN TRANSACTION');
+      try {
+        const result = fn(...args);
+        this.rawDb.run('COMMIT');
+        scheduleSave();
+        return result;
+      } catch (err) {
+        this.rawDb.run('ROLLBACK');
+        throw err;
+      }
+    };
+  }
+
+  close() {
+    flushSave();
+    this.rawDb.close();
+  }
+}
+
+class StatementWrapper {
+  constructor(rawDb, sql) {
+    this.rawDb = rawDb;
+    this.sql = sql;
+  }
+
+  run(...params) {
+    const flat = flattenParams(params);
+    this.rawDb.run(this.sql, flat);
+    scheduleSave();
+    const info = {
+      changes: this.rawDb.getRowsModified(),
+      lastInsertRowid: getLastInsertRowid(this.rawDb),
+    };
+    return info;
+  }
+
+  get(...params) {
+    const flat = flattenParams(params);
+    let stmt;
+    try {
+      stmt = this.rawDb.prepare(this.sql);
+      if (flat.length > 0) stmt.bind(flat);
+      if (stmt.step()) {
+        return rowToObject(stmt);
+      }
+      return undefined;
+    } finally {
+      if (stmt) stmt.free();
+    }
+  }
+
+  all(...params) {
+    const flat = flattenParams(params);
+    const rows = [];
+    let stmt;
+    try {
+      stmt = this.rawDb.prepare(this.sql);
+      if (flat.length > 0) stmt.bind(flat);
+      while (stmt.step()) {
+        rows.push(rowToObject(stmt));
+      }
+    } finally {
+      if (stmt) stmt.free();
+    }
+    return rows;
+  }
+}
+
+function flattenParams(params) {
+  if (params.length === 0) return [];
+  if (params.length === 1 && Array.isArray(params[0])) return params[0];
+  return params;
+}
+
+function rowToObject(stmt) {
+  const cols = stmt.getColumnNames();
+  const vals = stmt.get();
+  const obj = {};
+  for (let i = 0; i < cols.length; i++) {
+    obj[cols[i]] = vals[i];
+  }
+  return obj;
+}
+
+function getLastInsertRowid(rawDb) {
+  let stmt;
+  try {
+    stmt = rawDb.prepare('SELECT last_insert_rowid() as id');
+    if (stmt.step()) return stmt.get()[0];
+    return 0;
+  } finally {
+    if (stmt) stmt.free();
+  }
+}
+
+// Auto-save: debounce writes to disk (every 2 seconds after changes)
+function scheduleSave() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    flushSave();
+  }, 2000);
+}
+
+function flushSave() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  if (sqliteDb) {
+    try {
+      const data = sqliteDb.rawDb.export();
+      const buffer = Buffer.from(data);
+      fs.writeFileSync(DB_PATH, buffer);
+    } catch (err) {
+      console.error('[DB] Save error:', err.message);
+    }
+  }
+}
+
+// ── Public API (same as before) ──
+
+async function getDbAsync() {
+  if (db) return db;
+
+  const SQL = await initSqlJs();
+
+  let rawDb;
+  if (fs.existsSync(DB_PATH)) {
+    const fileBuffer = fs.readFileSync(DB_PATH);
+    rawDb = new SQL.Database(fileBuffer);
+  } else {
+    rawDb = new SQL.Database();
+  }
+
+  rawDb.run('PRAGMA foreign_keys = ON');
+
+  sqliteDb = db = new SqlJsWrapper(rawDb);
   return db;
 }
 
-function initSchema() {
-  const db = getDb();
+// Synchronous getter (only works after first init)
+function getDb() {
+  if (!db) throw new Error('Database not initialized. Call initSchema() first.');
+  return db;
+}
 
-  db.exec(`
+async function initSchema() {
+  const dbInstance = await getDbAsync();
+
+  dbInstance.exec(`
     -- Metadata: track collection runs
     CREATE TABLE IF NOT EXISTS collection_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -141,10 +305,10 @@ function initSchema() {
       summary TEXT,
       description TEXT,
       environment TEXT,
-      labels TEXT, -- JSON array
-      components TEXT, -- JSON array
-      fix_versions TEXT, -- JSON array
-      affects_versions TEXT, -- JSON array
+      labels TEXT,
+      components TEXT,
+      fix_versions TEXT,
+      affects_versions TEXT,
       assignee_key TEXT,
       assignee_name TEXT,
       reporter_key TEXT,
@@ -174,7 +338,7 @@ function initSchema() {
       link_type_name TEXT,
       link_type_inward TEXT,
       link_type_outward TEXT,
-      direction TEXT, -- 'inward' or 'outward'
+      direction TEXT,
       linked_issue_key TEXT,
       linked_issue_summary TEXT,
       linked_issue_status TEXT,
@@ -427,13 +591,15 @@ function initSchema() {
   `);
 
   console.log('[DB] Schema initialized successfully');
-  return db;
+  return dbInstance;
 }
 
 function closeDb() {
+  flushSave();
   if (db) {
     db.close();
     db = null;
+    sqliteDb = null;
   }
 }
 

@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(fuser -k 3000/tcp)"
+    ]
+  }
+}

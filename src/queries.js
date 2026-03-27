@@ -300,8 +300,8 @@ const QUERIES = {
   },
 };
 
-function runQuery(name) {
-  const db = initSchema();
+async function runQuery(name) {
+  const db = await initSchema();
   const query = QUERIES[name];
   if (!query) {
     console.log('Available queries:');
@@ -325,8 +325,8 @@ function runQuery(name) {
 }
 
 // Run all queries and export to a report
-function runAllQueries() {
-  const db = initSchema();
+async function runAllQueries() {
+  const db = await initSchema();
   const results = {};
 
   for (const [name, query] of Object.entries(QUERIES)) {
@@ -345,25 +345,27 @@ function runAllQueries() {
 }
 
 if (require.main === module) {
-  const queryName = process.argv[2];
-  if (queryName === '--all') {
-    const results = runAllQueries();
-    for (const [name, result] of Object.entries(results)) {
-      console.log(`\n${'='.repeat(60)}`);
-      console.log(`=== ${result.title} ===`);
-      console.log('='.repeat(60));
-      if (result.error) {
-        console.log(`ERROR: ${result.error}`);
-      } else if (result.rows.length === 0) {
-        console.log('(no results)');
-      } else {
-        console.table(result.rows);
-        console.log(`${result.rows.length} rows`);
+  (async () => {
+    const queryName = process.argv[2];
+    if (queryName === '--all') {
+      const results = await runAllQueries();
+      for (const [name, result] of Object.entries(results)) {
+        console.log(`\n${'='.repeat(60)}`);
+        console.log(`=== ${result.title} ===`);
+        console.log('='.repeat(60));
+        if (result.error) {
+          console.log(`ERROR: ${result.error}`);
+        } else if (result.rows.length === 0) {
+          console.log('(no results)');
+        } else {
+          console.table(result.rows);
+          console.log(`${result.rows.length} rows`);
+        }
       }
+    } else {
+      await runQuery(queryName);
     }
-  } else {
-    runQuery(queryName);
-  }
+  })();
 }
 
 module.exports = { QUERIES, runQuery, runAllQueries };

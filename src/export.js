@@ -53,8 +53,8 @@ function exportTable(db, table, format, outputDir) {
   console.log(`  [OK] ${table} -> ${filePath} (${rows.length} rows)`);
 }
 
-function exportAll(format = 'csv', outputDir = './export') {
-  const db = initSchema();
+async function exportAll(format = 'csv', outputDir = './export') {
+  const db = await initSchema();
 
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
@@ -105,7 +105,7 @@ function exportAll(format = 'csv', outputDir = './export') {
 if (require.main === module) {
   const format = process.argv[2] || 'csv';
   const outputDir = process.argv[3] || './export';
-  exportAll(format, outputDir);
+  exportAll(format, outputDir).catch(err => console.error(err));
 }
 
 module.exports = { exportAll };
