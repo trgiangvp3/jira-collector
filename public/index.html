@@ -290,6 +290,7 @@
       white-space: nowrap;
     }
     .data-table tr:hover td { background: var(--surface2); }
+    .data-table a:hover { text-decoration: underline !important; }
     .data-table .null { color: var(--text2); font-style: italic; }
 
     .result-bar {
@@ -976,11 +977,45 @@ ORDER BY total DESC</textarea>
     }
 
     // ── Render Table ──
+    // Issue key pattern: PROJECT-123
+    const issueKeyRe = /^[A-Z][A-Z0-9_]+-\d+$/;
+    const issueKeyInlineRe = /\b([A-Z][A-Z0-9_]+-\d+)\b/g;
+
+    // Detect if a column likely contains issue keys
+    function isIssueKeyCol(colName) {
+      const cl = colName.toLowerCase();
+      return cl === 'key' || cl === 'issue_key' || cl === 'issue key'
+        || cl === 'parent_key' || cl === 'epic_key'
+        || cl === 'linked_issue_key' || cl === 'issue keys'
+        || cl === 'issue key';
+    }
+
+    function renderCellValue(col, val) {
+      if (val === null || val === undefined) return '<td class="null">NULL</td>';
+      const str = String(val);
+      const display = str.length > 200 ? str.substring(0, 200) + '...' : str;
+
+      // Single issue key cell (e.g. key column)
+      if (issueKeyRe.test(str.trim()) && jiraBaseUrl) {
+        return `<td><a href="${jiraBaseUrl}/browse/${escAttr(str.trim())}" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:600">${escHtml(str)}</a></td>`;
+      }
+
+      // Column known to contain issue keys, or cell contains multiple keys
+      if ((isIssueKeyCol(col) || issueKeyInlineRe.test(str)) && jiraBaseUrl) {
+        issueKeyInlineRe.lastIndex = 0;
+        const linked = escHtml(display).replace(/\b([A-Z][A-Z0-9_]+-\d+)\b/g,
+          `<a href="${jiraBaseUrl}/browse/$1" target="_blank" style="color:var(--accent);text-decoration:none">$1</a>`);
+        return `<td title="${escAttr(str)}">${linked}</td>`;
+      }
+
+      return `<td title="${escAttr(str)}">${escHtml(display)}</td>`;
+    }
+
     function renderTable(rows) {
       if (!rows || rows.length === 0) return '<div style="color:var(--text2);padding:12px">No results</div>';
       const cols = Object.keys(rows[0]).filter(c => c !== 'raw_json');
       const maxRows = 500;
-      const display = rows.slice(0, maxRows);
+      const displayRows = rows.slice(0, maxRows);
 
       let html = `<div class="table-wrapper" style="max-height:600px;overflow:auto">
         <table class="data-table"><thead><tr>`;
@@ -988,17 +1023,10 @@ ORDER BY total DESC</textarea>
         html += `<th>${escHtml(col)}</th>`;
       }
       html += '</tr></thead><tbody>';
-      for (const row of display) {
+      for (const row of displayRows) {
         html += '<tr>';
         for (const col of cols) {
-          const val = row[col];
-          if (val === null || val === undefined) {
-            html += '<td class="null">NULL</td>';
-          } else {
-            const str = String(val);
-            const display = str.length > 200 ? str.substring(0, 200) + '...' : str;
-            html += `<td title="${escAttr(str)}">${escHtml(display)}</td>`;
-          }
+          html += renderCellValue(col, row[col]);
         }
         html += '</tr>';
       }
@@ -1263,8 +1291,12 @@ ORDER BY total DESC</textarea>
     }
 
     // ── Init ──
+    let jiraBaseUrl = '';
     loadStats();
-    fetch('/api/settings').then(r => r.json()).then(r => updateConnBadge(r.configured));
+    fetch('/api/settings').then(r => r.json()).then(r => {
+      updateConnBadge(r.configured);
+      jiraBaseUrl = (r.settings.JIRA_BASE_URL || '').replace(/\/+$/, '');
+    });
   </script>
 </body>
 </html>
