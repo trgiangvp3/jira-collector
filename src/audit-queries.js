@@ -1810,6 +1810,494 @@ ORDER BY
   CASE LOWER(priority_name) WHEN 'blocker' THEN 1 WHEN 'critical' THEN 2 WHEN 'highest' THEN 3 WHEN 'high' THEN 4 WHEN 'medium' THEN 5 WHEN 'low' THEN 6 ELSE 7 END,
   created ASC`
   },
+
+  // ================================================================
+  //  20. I.4 - RỦI RO CHƯA THỰC HIỆN PENTEST ỨNG DỤNG
+  //      Kiểm tra bằng chứng pentest cho từng hệ thống cấp 2,3
+  // ================================================================
+
+  'i4-01-pentest-evidence-all': {
+    category: 'I.4 - Pentest',
+    title: '[I.4] Bằng chứng Pentest - Tổng hợp tất cả hệ thống',
+    description: 'Tìm tất cả issue liên quan pentest/VA cho các hệ thống cấp 2,3 trong danh mục. Match theo tên hệ thống trong summary/description.',
+    sql: `
+WITH system_list(sys_name, sys_level) AS (VALUES
+  ('TTBC',2),('SIMO',2),('Kho dữ liệu',2),('Báo cáo ngân hàng',2),('RWA',2),
+  ('dealtracker',2),('Tellerportal',2),('Eswitch',2),('FlexCash',2),('SmartForm',2),
+  ('RPA',2),('Voffice',2),('eOffice',2),('LOS',2),('CIC',2),('AML',2),
+  ('CRM',2),('Lending',2),('Einvoice',2),('DevSecOps',2),('ERP',2),
+  ('Notification',2),('OTP',2),('NAC',2),('SIEM',2),('QRadar',2),('SOAR',2),
+  ('IDM',2),('PAM',2),('IVANTI',2),('ePIN',2),('SBV',2),
+  ('Corebanking',3),('T24',3),('Mobile Banking',3),('Omni Retail',3),
+  ('SWIFT',3),('Email',3),('Exchange',3),('AD',3),('DNS',3),
+  ('Thẻ',3),('Smartvista',3),('3DSecure',3),('HSM',3),
+  ('Call center',3),('Website',3),('F5',3),('WAF',3),
+  ('Firewall',3),('DDOS',3),('Billing',3),('Citad',3),('ACH',3),
+  ('Virtual Account',3),('ESB',3),('APIC',3),('Omni Corporate',3),
+  ('Office 365',3),('Deposit Service',3)
+),
+pentest_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%pentest%'
+     OR LOWER(summary) LIKE '%pen test%'
+     OR LOWER(summary) LIKE '%penetration%'
+     OR LOWER(summary) LIKE '%va scan%'
+     OR LOWER(summary) LIKE '%vulnerability assessment%'
+     OR LOWER(summary) LIKE '%đánh giá%bảo mật%'
+     OR LOWER(summary) LIKE '%danh gia%bao mat%'
+     OR LOWER(summary) LIKE '%security assessment%'
+     OR LOWER(summary) LIKE '%security review%'
+     OR LOWER(summary) LIKE '%security test%'
+     OR LOWER(summary) LIKE '%rà soát%attt%'
+     OR LOWER(summary) LIKE '%ra soat%attt%'
+     OR LOWER(summary) LIKE '%nessus%'
+     OR LOWER(summary) LIKE '%qualys%'
+     OR LOWER(summary) LIKE '%burp%'
+     OR LOWER(summary) LIKE '%acunetix%'
+     OR LOWER(labels) LIKE '%pentest%'
+     OR LOWER(labels) LIKE '%va-scan%'
+     OR LOWER(labels) LIKE '%security-test%'
+)
+SELECT
+  sl.sys_name as "Hệ thống",
+  sl.sys_level as "Cấp độ",
+  COUNT(pi.key) as "Số issue pentest",
+  COALESCE(GROUP_CONCAT(DISTINCT pi.key), 'KHÔNG TÌM THẤY') as "Issue keys",
+  COALESCE(MIN(SUBSTR(pi.created, 1, 10)), '-') as "Pentest đầu tiên",
+  COALESCE(MAX(SUBSTR(pi.created, 1, 10)), '-') as "Pentest gần nhất",
+  SUM(CASE WHEN pi.status_category != 'Done' AND pi.key IS NOT NULL THEN 1 ELSE 0 END) as "Findings chưa xử lý"
+FROM system_list sl
+LEFT JOIN pentest_issues pi ON (
+  LOWER(pi.summary) LIKE '%' || LOWER(sl.sys_name) || '%'
+  OR LOWER(pi.description) LIKE '%' || LOWER(sl.sys_name) || '%'
+)
+GROUP BY sl.sys_name, sl.sys_level
+ORDER BY sl.sys_level DESC, COUNT(pi.key) ASC, sl.sys_name`
+  },
+
+  'i4-02-systems-no-pentest': {
+    category: 'I.4 - Pentest',
+    title: '[I.4] Hệ thống CHƯA CÓ bằng chứng Pentest',
+    description: 'Danh sách hệ thống cấp 2,3 không tìm thấy bất kỳ issue pentest/VA nào trên Jira. Đây là rủi ro chính cần nêu trong báo cáo kiểm toán.',
+    sql: `
+WITH system_list(sys_name, sys_level) AS (VALUES
+  ('TTBC',2),('SIMO',2),('Kho dữ liệu',2),('Báo cáo ngân hàng',2),('RWA',2),
+  ('dealtracker',2),('Tellerportal',2),('Eswitch',2),('FlexCash',2),('SmartForm',2),
+  ('RPA',2),('Voffice',2),('eOffice',2),('LOS',2),('CIC',2),('AML',2),
+  ('CRM',2),('Lending',2),('Einvoice',2),('DevSecOps',2),('ERP',2),
+  ('Notification',2),('OTP',2),('NAC',2),('SIEM',2),('QRadar',2),('SOAR',2),
+  ('IDM',2),('PAM',2),('IVANTI',2),('ePIN',2),('SBV',2),
+  ('Corebanking',3),('T24',3),('Mobile Banking',3),('Omni Retail',3),
+  ('SWIFT',3),('Email',3),('Exchange',3),('AD',3),('DNS',3),
+  ('Thẻ',3),('Smartvista',3),('3DSecure',3),('HSM',3),
+  ('Call center',3),('Website',3),('F5',3),('WAF',3),
+  ('Firewall',3),('DDOS',3),('Billing',3),('Citad',3),('ACH',3),
+  ('Virtual Account',3),('ESB',3),('APIC',3),('Omni Corporate',3),
+  ('Office 365',3),('Deposit Service',3)
+),
+pentest_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%penetration%'
+     OR LOWER(summary) LIKE '%va scan%' OR LOWER(summary) LIKE '%vulnerability assessment%'
+     OR LOWER(summary) LIKE '%đánh giá%bảo mật%' OR LOWER(summary) LIKE '%security assessment%'
+     OR LOWER(summary) LIKE '%security test%' OR LOWER(summary) LIKE '%security review%'
+     OR LOWER(summary) LIKE '%nessus%' OR LOWER(summary) LIKE '%qualys%'
+     OR LOWER(labels) LIKE '%pentest%' OR LOWER(labels) LIKE '%va-scan%'
+)
+SELECT
+  sl.sys_name as "Hệ thống",
+  sl.sys_level as "Cấp độ",
+  'KHÔNG CÓ BẰNG CHỨNG PENTEST' as "Trạng thái"
+FROM system_list sl
+WHERE NOT EXISTS (
+  SELECT 1 FROM pentest_issues pi
+  WHERE LOWER(pi.summary) LIKE '%' || LOWER(sl.sys_name) || '%'
+     OR LOWER(pi.description) LIKE '%' || LOWER(sl.sys_name) || '%'
+)
+ORDER BY sl.sys_level DESC, sl.sys_name`
+  },
+
+  'i4-03-pentest-frequency': {
+    category: 'I.4 - Pentest',
+    title: '[I.4] Tần suất Pentest theo năm',
+    description: 'Thống kê số lần pentest/VA theo năm. Đánh giá có thực hiện định kỳ theo quy định không (thường yêu cầu ít nhất 1 lần/năm cho hệ thống cấp 3).',
+    sql: `
+SELECT
+  SUBSTR(created, 1, 4) as year,
+  COUNT(*) as total_pentest_issues,
+  COUNT(DISTINCT project_key) as projects_involved,
+  SUM(CASE WHEN status_category = 'Done' THEN 1 ELSE 0 END) as resolved,
+  SUM(CASE WHEN status_category != 'Done' THEN 1 ELSE 0 END) as still_open
+FROM issues
+WHERE LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%penetration%'
+   OR LOWER(summary) LIKE '%va scan%' OR LOWER(summary) LIKE '%vulnerability assessment%'
+   OR LOWER(summary) LIKE '%đánh giá%bảo mật%' OR LOWER(summary) LIKE '%security assessment%'
+   OR LOWER(summary) LIKE '%security test%'
+   OR LOWER(labels) LIKE '%pentest%' OR LOWER(labels) LIKE '%va-scan%'
+GROUP BY SUBSTR(created, 1, 4)
+ORDER BY year DESC`
+  },
+
+  'i4-04-pentest-findings-open': {
+    category: 'I.4 - Pentest',
+    title: '[I.4] Findings Pentest/VA chưa khắc phục (chi tiết)',
+    description: 'Chi tiết từng finding pentest/VA chưa done, thời gian tồn đọng, SLA. Attach vào phụ lục báo cáo kiểm toán.',
+    sql: `
+SELECT
+  key as "Issue Key",
+  project_key as "Project",
+  summary as "Finding",
+  priority_name as "Severity",
+  status_name as "Status",
+  assignee_name as "Assignee",
+  SUBSTR(created, 1, 10) as "Ngày phát hiện",
+  due_date as "Hạn xử lý",
+  CAST(julianday('now') - julianday(created) AS INTEGER) as "Số ngày tồn đọng",
+  CASE
+    WHEN due_date IS NOT NULL AND due_date < date('now') THEN 'QUÁ HẠN ' || CAST(julianday('now') - julianday(due_date) AS INTEGER) || ' ngày'
+    WHEN due_date IS NULL THEN 'KHÔNG CÓ HẠN'
+    ELSE 'Trong hạn'
+  END as "Tình trạng SLA"
+FROM issues
+WHERE (LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%penetration%'
+    OR LOWER(summary) LIKE '%va scan%' OR LOWER(summary) LIKE '%vulnerability assessment%'
+    OR LOWER(summary) LIKE '%đánh giá%bảo mật%' OR LOWER(summary) LIKE '%security assessment%'
+    OR LOWER(summary) LIKE '%security test%' OR LOWER(summary) LIKE '%finding%'
+    OR LOWER(labels) LIKE '%pentest%' OR LOWER(labels) LIKE '%va-scan%')
+  AND status_category != 'Done'
+ORDER BY
+  CASE LOWER(priority_name) WHEN 'blocker' THEN 1 WHEN 'critical' THEN 2 WHEN 'highest' THEN 3 WHEN 'high' THEN 4 ELSE 5 END,
+  CAST(julianday('now') - julianday(created) AS INTEGER) DESC`
+  },
+
+  'i4-05-customer-facing-no-pentest': {
+    category: 'I.4 - Pentest',
+    title: '[I.4] Hệ thống Customer-facing chưa có Pentest',
+    description: 'Hệ thống tiếp xúc khách hàng (Mobile Banking, Website, Billing, ATM...) mà chưa có bằng chứng pentest. Rủi ro cao nhất.',
+    sql: `
+WITH customer_facing(sys_name) AS (VALUES
+  ('Mobile Banking'),('Omni Retail'),('Website'),('Billing'),('Call center'),
+  ('Thẻ'),('Smartvista'),('3DSecure'),('ATM'),('POS'),
+  ('Citad'),('ACH'),('Einvoice'),('APIC'),('ESB'),
+  ('Omni Corporate'),('Virtual Account'),('Deposit Service'),
+  ('Thu thuế'),('mobilesale'),('SWIFT')
+),
+pentest_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%penetration%'
+     OR LOWER(summary) LIKE '%va scan%' OR LOWER(summary) LIKE '%vulnerability assessment%'
+     OR LOWER(summary) LIKE '%đánh giá%bảo mật%' OR LOWER(summary) LIKE '%security assessment%'
+     OR LOWER(summary) LIKE '%security test%'
+     OR LOWER(labels) LIKE '%pentest%' OR LOWER(labels) LIKE '%va-scan%'
+)
+SELECT
+  cf.sys_name as "Hệ thống Customer-facing",
+  CASE
+    WHEN EXISTS (SELECT 1 FROM pentest_issues pi WHERE LOWER(pi.summary) LIKE '%' || LOWER(cf.sys_name) || '%' OR LOWER(pi.description) LIKE '%' || LOWER(cf.sys_name) || '%')
+    THEN 'CÓ'
+    ELSE 'KHÔNG CÓ BẰNG CHỨNG'
+  END as "Pentest status",
+  (SELECT MAX(SUBSTR(pi.created, 1, 10)) FROM pentest_issues pi WHERE LOWER(pi.summary) LIKE '%' || LOWER(cf.sys_name) || '%' OR LOWER(pi.description) LIKE '%' || LOWER(cf.sys_name) || '%') as "Lần pentest gần nhất",
+  (SELECT COUNT(*) FROM pentest_issues pi WHERE (LOWER(pi.summary) LIKE '%' || LOWER(cf.sys_name) || '%' OR LOWER(pi.description) LIKE '%' || LOWER(cf.sys_name) || '%') AND pi.status_category != 'Done') as "Findings chưa xử lý"
+FROM customer_facing cf
+ORDER BY
+  CASE WHEN EXISTS (SELECT 1 FROM pentest_issues pi WHERE LOWER(pi.summary) LIKE '%' || LOWER(cf.sys_name) || '%') THEN 1 ELSE 0 END ASC,
+  cf.sys_name`
+  },
+
+  // ================================================================
+  //  21. I.5 - RỦI RO CHƯA CÓ TIÊU CHUẨN CẤU HÌNH ỨNG DỤNG
+  //      Hardening, baseline config, security standards
+  // ================================================================
+
+  'i5-01-hardening-issues': {
+    category: 'I.5 - Config Baseline',
+    title: '[I.5] Tất cả issues liên quan Hardening / Cấu hình bảo mật',
+    description: 'Tìm bằng chứng về hardening, baseline config, security configuration cho ứng dụng (web, mobile, API, desktop).',
+    sql: `
+SELECT
+  key, project_key, issue_type_name, summary,
+  priority_name, status_name, status_category,
+  assignee_name, reporter_name,
+  created, resolved, due_date,
+  CAST(julianday('now') - julianday(created) AS INTEGER) as age_days,
+  labels
+FROM issues
+WHERE LOWER(summary) LIKE '%hardening%'
+   OR LOWER(summary) LIKE '%baseline%'
+   OR LOWER(summary) LIKE '%security config%'
+   OR LOWER(summary) LIKE '%cấu hình bảo mật%'
+   OR LOWER(summary) LIKE '%cau hinh bao mat%'
+   OR LOWER(summary) LIKE '%tiêu chuẩn cấu hình%'
+   OR LOWER(summary) LIKE '%tieu chuan cau hinh%'
+   OR LOWER(summary) LIKE '%security standard%'
+   OR LOWER(summary) LIKE '%cis benchmark%'
+   OR LOWER(summary) LIKE '%stig%'
+   OR LOWER(summary) LIKE '%security header%'
+   OR LOWER(summary) LIKE '%http header%'
+   OR LOWER(summary) LIKE '%hsts%'
+   OR LOWER(summary) LIKE '%x-frame%'
+   OR LOWER(summary) LIKE '%x-content-type%'
+   OR LOWER(summary) LIKE '%content-security-policy%'
+   OR LOWER(summary) LIKE '%csp%'
+   OR LOWER(summary) LIKE '%cors%'
+   OR LOWER(summary) LIKE '%ssl config%'
+   OR LOWER(summary) LIKE '%tls config%'
+   OR LOWER(summary) LIKE '%cipher%'
+   OR LOWER(summary) LIKE '%certificate%'
+   OR LOWER(summary) LIKE '%disable%service%'
+   OR LOWER(summary) LIKE '%disable%port%'
+   OR LOWER(summary) LIKE '%unnecessary service%'
+   OR LOWER(summary) LIKE '%default password%'
+   OR LOWER(summary) LIKE '%default credential%'
+   OR LOWER(summary) LIKE '%password policy%'
+   OR LOWER(summary) LIKE '%session timeout%'
+   OR LOWER(summary) LIKE '%session management%'
+   OR LOWER(summary) LIKE '%cookie%secure%'
+   OR LOWER(summary) LIKE '%httponly%'
+   OR LOWER(summary) LIKE '%rate limit%'
+   OR LOWER(summary) LIKE '%brute force%'
+   OR LOWER(summary) LIKE '%lockout%'
+   OR LOWER(summary) LIKE '%error handling%'
+   OR LOWER(summary) LIKE '%stack trace%'
+   OR LOWER(summary) LIKE '%debug mode%'
+   OR LOWER(summary) LIKE '%information disclosure%'
+   OR LOWER(summary) LIKE '%version disclosure%'
+   OR LOWER(summary) LIKE '%server header%'
+   OR LOWER(summary) LIKE '%directory listing%'
+   OR LOWER(labels) LIKE '%hardening%'
+   OR LOWER(labels) LIKE '%baseline%'
+   OR LOWER(labels) LIKE '%config%'
+ORDER BY created DESC`
+  },
+
+  'i5-02-config-by-app-type': {
+    category: 'I.5 - Config Baseline',
+    title: '[I.5] Issues cấu hình theo loại ứng dụng (Web/Mobile/API/Desktop)',
+    description: 'Phân loại issues liên quan cấu hình bảo mật theo loại ứng dụng: Web app, Mobile app, API, Desktop.',
+    sql: `
+WITH config_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%hardening%' OR LOWER(summary) LIKE '%baseline%'
+     OR LOWER(summary) LIKE '%security config%' OR LOWER(summary) LIKE '%cấu hình%'
+     OR LOWER(summary) LIKE '%security header%' OR LOWER(summary) LIKE '%ssl%'
+     OR LOWER(summary) LIKE '%tls%' OR LOWER(summary) LIKE '%certificate%'
+     OR LOWER(summary) LIKE '%cipher%' OR LOWER(summary) LIKE '%hsts%'
+     OR LOWER(summary) LIKE '%cors%' OR LOWER(summary) LIKE '%csp%'
+     OR LOWER(summary) LIKE '%session%' OR LOWER(summary) LIKE '%cookie%'
+     OR LOWER(summary) LIKE '%password policy%' OR LOWER(summary) LIKE '%lockout%'
+     OR LOWER(summary) LIKE '%default password%' OR LOWER(summary) LIKE '%debug%'
+     OR LOWER(summary) LIKE '%error handling%' OR LOWER(summary) LIKE '%rate limit%'
+     OR LOWER(labels) LIKE '%hardening%' OR LOWER(labels) LIKE '%baseline%'
+)
+SELECT
+  CASE
+    WHEN LOWER(summary) LIKE '%mobile%' OR LOWER(summary) LIKE '%android%' OR LOWER(summary) LIKE '%ios%' OR LOWER(summary) LIKE '%app%mobile%' THEN 'Mobile App'
+    WHEN LOWER(summary) LIKE '%api%' OR LOWER(summary) LIKE '%rest%' OR LOWER(summary) LIKE '%endpoint%' OR LOWER(summary) LIKE '%swagger%' THEN 'API'
+    WHEN LOWER(summary) LIKE '%desktop%' OR LOWER(summary) LIKE '%client%' OR LOWER(summary) LIKE '%winform%' THEN 'Desktop App'
+    WHEN LOWER(summary) LIKE '%web%' OR LOWER(summary) LIKE '%http%' OR LOWER(summary) LIKE '%browser%' OR LOWER(summary) LIKE '%header%' OR LOWER(summary) LIKE '%cookie%' OR LOWER(summary) LIKE '%cors%' OR LOWER(summary) LIKE '%csp%' THEN 'Web App'
+    ELSE 'General / Unclassified'
+  END as app_type,
+  COUNT(*) as total,
+  SUM(CASE WHEN status_category = 'Done' THEN 1 ELSE 0 END) as done,
+  SUM(CASE WHEN status_category != 'Done' THEN 1 ELSE 0 END) as open,
+  GROUP_CONCAT(DISTINCT key) as issue_keys
+FROM config_issues
+GROUP BY app_type
+ORDER BY total DESC`
+  },
+
+  'i5-03-systems-no-hardening': {
+    category: 'I.5 - Config Baseline',
+    title: '[I.5] Hệ thống CHƯA CÓ bằng chứng Hardening/Baseline',
+    description: 'Hệ thống cấp 2,3 không tìm thấy issue nào liên quan hardening hoặc tiêu chuẩn cấu hình. Rủi ro: cấu hình mặc định, không tuân thủ.',
+    sql: `
+WITH system_list(sys_name, sys_level) AS (VALUES
+  ('TTBC',2),('SIMO',2),('Báo cáo ngân hàng',2),('RWA',2),
+  ('dealtracker',2),('Tellerportal',2),('Eswitch',2),('FlexCash',2),('SmartForm',2),
+  ('RPA',2),('Voffice',2),('eOffice',2),('LOS',2),('CIC',2),('AML',2),
+  ('CRM',2),('Lending',2),('Einvoice',2),('DevSecOps',2),('ERP',2),
+  ('OTP',2),('IDM',2),('PAM',2),('ePIN',2),
+  ('Corebanking',3),('T24',3),('Mobile Banking',3),('Omni Retail',3),
+  ('SWIFT',3),('Email',3),('Exchange',3),('AD',3),('DNS',3),
+  ('Thẻ',3),('Smartvista',3),('3DSecure',3),('HSM',3),
+  ('Call center',3),('Website',3),('F5',3),('WAF',3),
+  ('Firewall',3),('Billing',3),('Citad',3),('ACH',3),
+  ('Virtual Account',3),('ESB',3),('APIC',3),('Omni Corporate',3),
+  ('Office 365',3),('Deposit Service',3)
+),
+config_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%hardening%' OR LOWER(summary) LIKE '%baseline%'
+     OR LOWER(summary) LIKE '%security config%' OR LOWER(summary) LIKE '%cấu hình bảo mật%'
+     OR LOWER(summary) LIKE '%tiêu chuẩn cấu hình%' OR LOWER(summary) LIKE '%security standard%'
+     OR LOWER(summary) LIKE '%cis benchmark%' OR LOWER(summary) LIKE '%stig%'
+     OR LOWER(summary) LIKE '%ssl config%' OR LOWER(summary) LIKE '%tls config%'
+     OR LOWER(summary) LIKE '%cipher%' OR LOWER(summary) LIKE '%security header%'
+     OR LOWER(summary) LIKE '%hsts%' OR LOWER(summary) LIKE '%csp%'
+     OR LOWER(summary) LIKE '%cors%' OR LOWER(summary) LIKE '%session%timeout%'
+     OR LOWER(summary) LIKE '%password policy%' OR LOWER(summary) LIKE '%lockout%'
+     OR LOWER(labels) LIKE '%hardening%' OR LOWER(labels) LIKE '%baseline%'
+)
+SELECT
+  sl.sys_name as "Hệ thống",
+  sl.sys_level as "Cấp độ",
+  'KHÔNG TÌM THẤY BẰNG CHỨNG' as "Trạng thái Hardening/Baseline"
+FROM system_list sl
+WHERE NOT EXISTS (
+  SELECT 1 FROM config_issues ci
+  WHERE LOWER(ci.summary) LIKE '%' || LOWER(sl.sys_name) || '%'
+     OR LOWER(ci.description) LIKE '%' || LOWER(sl.sys_name) || '%'
+)
+ORDER BY sl.sys_level DESC, sl.sys_name`
+  },
+
+  'i5-04-ssl-tls-issues': {
+    category: 'I.5 - Config Baseline',
+    title: '[I.5] Issues liên quan SSL/TLS/Certificate',
+    description: 'Vấn đề cấu hình SSL/TLS: certificate hết hạn, cipher yếu, protocol cũ. Quan trọng cho hệ thống banking.',
+    sql: `
+SELECT
+  key, project_key, summary,
+  priority_name, status_name, status_category,
+  assignee_name,
+  created, resolved, due_date,
+  CAST(julianday('now') - julianday(created) AS INTEGER) as age_days
+FROM issues
+WHERE LOWER(summary) LIKE '%ssl%'
+   OR LOWER(summary) LIKE '%tls%'
+   OR LOWER(summary) LIKE '%certificate%'
+   OR LOWER(summary) LIKE '%chứng chỉ số%'
+   OR LOWER(summary) LIKE '%chung chi so%'
+   OR LOWER(summary) LIKE '%cipher%'
+   OR LOWER(summary) LIKE '%https%'
+   OR LOWER(summary) LIKE '%hết hạn%cert%'
+   OR LOWER(summary) LIKE '%expired%cert%'
+   OR LOWER(summary) LIKE '%renew%cert%'
+   OR LOWER(summary) LIKE '%gia hạn%cert%'
+ORDER BY created DESC`
+  },
+
+  'i5-05-web-security-config': {
+    category: 'I.5 - Config Baseline',
+    title: '[I.5] Issues cấu hình bảo mật Web (headers, CORS, CSP, session)',
+    description: 'Vấn đề cấu hình bảo mật web application: security headers, CORS, CSP, session management, cookie.',
+    sql: `
+SELECT
+  key, project_key, summary,
+  priority_name, status_name, status_category,
+  assignee_name, created, resolved,
+  CAST(julianday('now') - julianday(created) AS INTEGER) as age_days
+FROM issues
+WHERE LOWER(summary) LIKE '%security header%'
+   OR LOWER(summary) LIKE '%http header%'
+   OR LOWER(summary) LIKE '%hsts%'
+   OR LOWER(summary) LIKE '%x-frame%'
+   OR LOWER(summary) LIKE '%x-content-type%'
+   OR LOWER(summary) LIKE '%content-security-policy%'
+   OR LOWER(summary) LIKE '%csp%policy%'
+   OR LOWER(summary) LIKE '%cors%'
+   OR LOWER(summary) LIKE '%cross-origin%'
+   OR LOWER(summary) LIKE '%session%timeout%'
+   OR LOWER(summary) LIKE '%session%management%'
+   OR LOWER(summary) LIKE '%cookie%secure%'
+   OR LOWER(summary) LIKE '%httponly%'
+   OR LOWER(summary) LIKE '%samesite%'
+   OR LOWER(summary) LIKE '%clickjack%'
+   OR LOWER(summary) LIKE '%directory listing%'
+   OR LOWER(summary) LIKE '%server header%'
+   OR LOWER(summary) LIKE '%version disclosure%'
+   OR LOWER(summary) LIKE '%information disclosure%'
+   OR LOWER(summary) LIKE '%error page%'
+   OR LOWER(summary) LIKE '%stack trace%'
+   OR LOWER(summary) LIKE '%debug mode%'
+ORDER BY created DESC`
+  },
+
+  'i5-06-default-credentials': {
+    category: 'I.5 - Config Baseline',
+    title: '[I.5] Issues liên quan Default Credential / Password Policy',
+    description: 'Vấn đề mật khẩu mặc định, chính sách mật khẩu, account lockout. Rủi ro lớn cho hệ thống banking.',
+    sql: `
+SELECT
+  key, project_key, summary,
+  priority_name, status_name, status_category,
+  assignee_name, created, resolved,
+  CAST(julianday('now') - julianday(created) AS INTEGER) as age_days
+FROM issues
+WHERE LOWER(summary) LIKE '%default password%'
+   OR LOWER(summary) LIKE '%default credential%'
+   OR LOWER(summary) LIKE '%mật khẩu mặc định%'
+   OR LOWER(summary) LIKE '%mat khau mac dinh%'
+   OR LOWER(summary) LIKE '%password policy%'
+   OR LOWER(summary) LIKE '%chính sách mật khẩu%'
+   OR LOWER(summary) LIKE '%chinh sach mat khau%'
+   OR LOWER(summary) LIKE '%password complex%'
+   OR LOWER(summary) LIKE '%password strength%'
+   OR LOWER(summary) LIKE '%account lockout%'
+   OR LOWER(summary) LIKE '%brute force%'
+   OR LOWER(summary) LIKE '%rate limit%'
+   OR LOWER(summary) LIKE '%login attempt%'
+   OR LOWER(summary) LIKE '%2fa%'
+   OR LOWER(summary) LIKE '%two factor%'
+   OR LOWER(summary) LIKE '%multi factor%'
+   OR LOWER(summary) LIKE '%mfa%'
+   OR LOWER(summary) LIKE '%xác thực hai%'
+   OR LOWER(summary) LIKE '%xác thực 2%'
+ORDER BY created DESC`
+  },
+
+  'i5-07-config-summary-report': {
+    category: 'I.5 - Config Baseline',
+    title: '[I.5] TỔNG HỢP: Trạng thái tiêu chuẩn cấu hình theo hệ thống',
+    description: 'Bảng tổng hợp cho báo cáo I.5: mỗi hệ thống cấp 2,3 có bao nhiêu issues cấu hình, trạng thái xử lý.',
+    sql: `
+WITH system_list(sys_name, sys_level) AS (VALUES
+  ('TTBC',2),('SIMO',2),('Báo cáo ngân hàng',2),('RWA',2),
+  ('dealtracker',2),('Tellerportal',2),('Eswitch',2),('FlexCash',2),('SmartForm',2),
+  ('RPA',2),('Voffice',2),('eOffice',2),('LOS',2),('CIC',2),('AML',2),
+  ('CRM',2),('Lending',2),('Einvoice',2),('DevSecOps',2),('ERP',2),
+  ('OTP',2),('IDM',2),('PAM',2),('ePIN',2),
+  ('Corebanking',3),('T24',3),('Mobile Banking',3),('Omni Retail',3),
+  ('SWIFT',3),('Email',3),('Exchange',3),('AD',3),('DNS',3),
+  ('Thẻ',3),('Smartvista',3),('3DSecure',3),('HSM',3),
+  ('Call center',3),('Website',3),('F5',3),('WAF',3),
+  ('Firewall',3),('Billing',3),('Citad',3),('ACH',3),
+  ('Virtual Account',3),('ESB',3),('APIC',3),('Omni Corporate',3),
+  ('Office 365',3),('Deposit Service',3)
+),
+config_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%hardening%' OR LOWER(summary) LIKE '%baseline%'
+     OR LOWER(summary) LIKE '%security config%' OR LOWER(summary) LIKE '%cấu hình bảo mật%'
+     OR LOWER(summary) LIKE '%tiêu chuẩn cấu hình%' OR LOWER(summary) LIKE '%security standard%'
+     OR LOWER(summary) LIKE '%ssl%' OR LOWER(summary) LIKE '%tls%' OR LOWER(summary) LIKE '%certificate%'
+     OR LOWER(summary) LIKE '%cipher%' OR LOWER(summary) LIKE '%security header%'
+     OR LOWER(summary) LIKE '%hsts%' OR LOWER(summary) LIKE '%csp%' OR LOWER(summary) LIKE '%cors%'
+     OR LOWER(summary) LIKE '%session%timeout%' OR LOWER(summary) LIKE '%password policy%'
+     OR LOWER(summary) LIKE '%default password%' OR LOWER(summary) LIKE '%lockout%'
+     OR LOWER(summary) LIKE '%hardening%' OR LOWER(summary) LIKE '%debug%'
+     OR LOWER(labels) LIKE '%hardening%' OR LOWER(labels) LIKE '%baseline%' OR LOWER(labels) LIKE '%config%'
+)
+SELECT
+  sl.sys_name as "Hệ thống",
+  sl.sys_level as "Cấp độ",
+  COUNT(ci.key) as "Số issues config",
+  SUM(CASE WHEN ci.status_category = 'Done' THEN 1 ELSE 0 END) as "Đã xử lý",
+  SUM(CASE WHEN ci.status_category != 'Done' AND ci.key IS NOT NULL THEN 1 ELSE 0 END) as "Chưa xử lý",
+  CASE
+    WHEN COUNT(ci.key) = 0 THEN 'KHÔNG CÓ BẰNG CHỨNG'
+    WHEN SUM(CASE WHEN ci.status_category != 'Done' AND ci.key IS NOT NULL THEN 1 ELSE 0 END) > 0 THEN 'CÒN TỒN ĐỌNG'
+    ELSE 'ĐÃ XỬ LÝ'
+  END as "Đánh giá"
+FROM system_list sl
+LEFT JOIN config_issues ci ON (
+  LOWER(ci.summary) LIKE '%' || LOWER(sl.sys_name) || '%'
+  OR LOWER(ci.description) LIKE '%' || LOWER(sl.sys_name) || '%'
+)
+GROUP BY sl.sys_name, sl.sys_level
+ORDER BY sl.sys_level DESC, COUNT(ci.key) ASC, sl.sys_name`
+  },
 };
 
 module.exports = { AUDIT_QUERIES };
