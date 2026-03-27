@@ -291,6 +291,25 @@
     }
     .data-table tr:hover td { background: var(--surface2); }
     .data-table a:hover { text-decoration: underline !important; }
+    .data-table th { cursor: pointer; user-select: none; position: relative; }
+    .data-table th:hover { background: var(--border); }
+    .data-table th .sort-arrow { margin-left: 4px; font-size: 10px; opacity: 0.4; }
+    .data-table th.sort-asc .sort-arrow, .data-table th.sort-desc .sort-arrow { opacity: 1; color: var(--accent); }
+    .table-filter-bar {
+      display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;
+    }
+    .table-filter-bar input {
+      flex: 1; min-width: 200px; padding: 7px 12px; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); font-size: 12px; outline: none;
+    }
+    .table-filter-bar input:focus { border-color: var(--accent); }
+    .table-filter-bar .filter-info { font-size: 11px; color: var(--text2); white-space: nowrap; }
+    .table-filter-bar .filter-clear {
+      padding: 4px 10px; font-size: 11px; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 4px; color: var(--text2); cursor: pointer;
+    }
+    .table-filter-bar .filter-clear:hover { border-color: var(--accent); color: var(--text); }
+    tr.filter-hidden { display: none; }
     .data-table .null { color: var(--text2); font-style: italic; }
 
     .result-bar {
@@ -1011,20 +1030,30 @@ ORDER BY total DESC</textarea>
       return `<td title="${escAttr(str)}">${escHtml(display)}</td>`;
     }
 
+    let _tableCounter = 0;
+
     function renderTable(rows) {
       if (!rows || rows.length === 0) return '<div style="color:var(--text2);padding:12px">No results</div>';
       const cols = Object.keys(rows[0]).filter(c => c !== 'raw_json');
-      const maxRows = 500;
+      const maxRows = 1000;
       const displayRows = rows.slice(0, maxRows);
+      const tid = 'tbl-' + (++_tableCounter);
 
-      let html = `<div class="table-wrapper" style="max-height:600px;overflow:auto">
-        <table class="data-table"><thead><tr>`;
-      for (const col of cols) {
-        html += `<th>${escHtml(col)}</th>`;
+      let html = `<div class="table-filter-bar">
+        <input type="text" id="${tid}-filter" placeholder="Filter... (type to search across all columns)" oninput="filterTable('${tid}')">
+        <span class="filter-info" id="${tid}-info">${displayRows.length} rows</span>
+        <button class="filter-clear" onclick="document.getElementById('${tid}-filter').value='';filterTable('${tid}')">Clear</button>
+      </div>`;
+      html += `<div class="table-wrapper" style="max-height:600px;overflow:auto">
+        <table class="data-table" id="${tid}"><thead><tr>`;
+      for (let i = 0; i < cols.length; i++) {
+        html += `<th onclick="sortTable('${tid}',${i})" data-col="${i}">${escHtml(cols[i])}<span class="sort-arrow">&#9650;</span></th>`;
       }
       html += '</tr></thead><tbody>';
       for (const row of displayRows) {
-        html += '<tr>';
+        // Store raw text for filtering in data attribute
+        const rawText = cols.map(c => String(row[c] ?? '')).join('\t').toLowerCase();
+        html += `<tr data-raw="${escAttr(rawText)}">`;
         for (const col of cols) {
           html += renderCellValue(col, row[col]);
         }
@@ -1035,6 +1064,67 @@ ORDER BY total DESC</textarea>
         html += `<div style="color:var(--text2);font-size:12px;margin-top:8px">Showing ${maxRows} of ${rows.length} rows</div>`;
       }
       return html;
+    }
+
+    // ── Sort ──
+    const _sortState = {}; // tid -> { col, dir }
+
+    function sortTable(tid, colIdx) {
+      const table = document.getElementById(tid);
+      if (!table) return;
+      const tbody = table.querySelector('tbody');
+      const rowsArr = Array.from(tbody.querySelectorAll('tr'));
+      const ths = table.querySelectorAll('thead th');
+
+      // Determine direction
+      const prev = _sortState[tid];
+      let dir = 'asc';
+      if (prev && prev.col === colIdx && prev.dir === 'asc') dir = 'desc';
+      _sortState[tid] = { col: colIdx, dir };
+
+      // Update header styles
+      ths.forEach(th => { th.classList.remove('sort-asc', 'sort-desc'); });
+      ths[colIdx].classList.add('sort-' + dir);
+      ths[colIdx].querySelector('.sort-arrow').innerHTML = dir === 'asc' ? '&#9650;' : '&#9660;';
+
+      // Sort rows
+      rowsArr.sort((a, b) => {
+        const aVal = a.children[colIdx]?.textContent?.trim() ?? '';
+        const bVal = b.children[colIdx]?.textContent?.trim() ?? '';
+        // Try numeric
+        const aNum = parseFloat(aVal);
+        const bNum = parseFloat(bVal);
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+          return dir === 'asc' ? aNum - bNum : bNum - aNum;
+        }
+        // String compare
+        const cmp = aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: 'base' });
+        return dir === 'asc' ? cmp : -cmp;
+      });
+
+      // Re-append
+      for (const row of rowsArr) tbody.appendChild(row);
+    }
+
+    // ── Filter ──
+    function filterTable(tid) {
+      const input = document.getElementById(tid + '-filter');
+      const info = document.getElementById(tid + '-info');
+      const table = document.getElementById(tid);
+      if (!input || !table) return;
+
+      const terms = input.value.toLowerCase().split(/\s+/).filter(Boolean);
+      const rows = table.querySelectorAll('tbody tr');
+      let visible = 0;
+
+      rows.forEach(row => {
+        const raw = row.getAttribute('data-raw') || '';
+        const match = terms.length === 0 || terms.every(t => raw.includes(t));
+        row.classList.toggle('filter-hidden', !match);
+        if (match) visible++;
+      });
+
+      if (info) info.textContent = terms.length > 0 ? `${visible} / ${rows.length} rows` : `${rows.length} rows`;
     }
 
     // ── Download ──
