@@ -887,6 +887,929 @@ UNION ALL
 SELECT 'Dashboard' as type, name, owner_name, description as detail FROM dashboards
 ORDER BY type, name`
   },
+
+  // ================================================================
+  //  10. QUẢN LÝ ĐIỂM YẾU ATTT - TỔNG QUAN (Vulnerability Overview)
+  // ================================================================
+
+  'vul-01-all-security-issues': {
+    category: 'Vuln - Overview',
+    title: 'Tất cả issues liên quan ATTT / điểm yếu / lỗ hổng',
+    description: 'Tìm tất cả issue liên quan đến vulnerability, security, bảo mật, lỗ hổng, điểm yếu, CVE, pentest, VA scan. Đây là tập dữ liệu gốc để phân tích.',
+    sql: `
+SELECT
+  i.key, i.project_key, i.issue_type_name, i.summary,
+  i.priority_name, i.status_name, i.status_category,
+  i.resolution_name,
+  i.assignee_name, i.reporter_name,
+  i.security_level,
+  i.created, i.updated, i.resolved, i.due_date,
+  CAST(julianday('now') - julianday(i.created) AS INTEGER) as age_days,
+  CASE
+    WHEN i.resolved IS NOT NULL THEN CAST(julianday(i.resolved) - julianday(i.created) AS INTEGER)
+    ELSE NULL
+  END as resolution_days,
+  i.labels, i.components
+FROM issues i
+WHERE LOWER(i.summary) LIKE '%vulnerab%'
+   OR LOWER(i.summary) LIKE '%security%'
+   OR LOWER(i.summary) LIKE '%bảo mật%'
+   OR LOWER(i.summary) LIKE '%bao mat%'
+   OR LOWER(i.summary) LIKE '%lỗ hổng%'
+   OR LOWER(i.summary) LIKE '%lo hong%'
+   OR LOWER(i.summary) LIKE '%điểm yếu%'
+   OR LOWER(i.summary) LIKE '%diem yeu%'
+   OR LOWER(i.summary) LIKE '%cve-%'
+   OR LOWER(i.summary) LIKE '%pentest%'
+   OR LOWER(i.summary) LIKE '%pen test%'
+   OR LOWER(i.summary) LIKE '%penetration%'
+   OR LOWER(i.summary) LIKE '%va scan%'
+   OR LOWER(i.summary) LIKE '%scan%vuln%'
+   OR LOWER(i.summary) LIKE '%patch%'
+   OR LOWER(i.summary) LIKE '%hotfix%'
+   OR LOWER(i.summary) LIKE '%exploit%'
+   OR LOWER(i.summary) LIKE '%malware%'
+   OR LOWER(i.summary) LIKE '%ransomware%'
+   OR LOWER(i.summary) LIKE '%incident%'
+   OR LOWER(i.summary) LIKE '%sự cố%'
+   OR LOWER(i.summary) LIKE '%su co%'
+   OR LOWER(i.summary) LIKE '%waf%'
+   OR LOWER(i.summary) LIKE '%firewall%'
+   OR LOWER(i.summary) LIKE '%ids%'
+   OR LOWER(i.summary) LIKE '%ips%'
+   OR LOWER(i.summary) LIKE '%siem%'
+   OR LOWER(i.summary) LIKE '%soc%'
+   OR LOWER(i.summary) LIKE '%hardening%'
+   OR LOWER(i.summary) LIKE '%compliance%'
+   OR LOWER(i.summary) LIKE '%audit%'
+   OR LOWER(i.summary) LIKE '%kiểm toán%'
+   OR LOWER(i.summary) LIKE '%kiem toan%'
+   OR LOWER(i.summary) LIKE '%owasp%'
+   OR LOWER(i.summary) LIKE '%injection%'
+   OR LOWER(i.summary) LIKE '%xss%'
+   OR LOWER(i.summary) LIKE '%csrf%'
+   OR LOWER(i.summary) LIKE '%ssl%'
+   OR LOWER(i.summary) LIKE '%tls%'
+   OR LOWER(i.summary) LIKE '%certificate%'
+   OR LOWER(i.summary) LIKE '%encryption%'
+   OR LOWER(i.summary) LIKE '%mã hóa%'
+   OR LOWER(i.summary) LIKE '%access control%'
+   OR LOWER(i.summary) LIKE '%phân quyền%'
+   OR LOWER(i.summary) LIKE '%authentication%'
+   OR LOWER(i.summary) LIKE '%authorization%'
+   OR LOWER(i.summary) LIKE '%xác thực%'
+   OR LOWER(i.labels) LIKE '%security%'
+   OR LOWER(i.labels) LIKE '%vulnerability%'
+   OR LOWER(i.labels) LIKE '%cve%'
+   OR LOWER(i.labels) LIKE '%pentest%'
+   OR LOWER(i.issue_type_name) LIKE '%bug%'
+   OR LOWER(i.issue_type_name) LIKE '%security%'
+   OR LOWER(i.issue_type_name) LIKE '%vulnerability%'
+   OR LOWER(i.issue_type_name) LIKE '%incident%'
+ORDER BY i.created DESC`
+  },
+
+  'vul-02-stats-by-project': {
+    category: 'Vuln - Overview',
+    title: 'Thống kê issues ATTT theo Project',
+    description: 'Phân bổ các issue ATTT theo từng project. Xác định project nào có nhiều điểm yếu nhất.',
+    sql: `
+WITH security_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%vulnerab%'
+     OR LOWER(summary) LIKE '%security%'
+     OR LOWER(summary) LIKE '%bảo mật%'
+     OR LOWER(summary) LIKE '%bao mat%'
+     OR LOWER(summary) LIKE '%lỗ hổng%'
+     OR LOWER(summary) LIKE '%lo hong%'
+     OR LOWER(summary) LIKE '%điểm yếu%'
+     OR LOWER(summary) LIKE '%diem yeu%'
+     OR LOWER(summary) LIKE '%cve-%'
+     OR LOWER(summary) LIKE '%pentest%'
+     OR LOWER(summary) LIKE '%patch%'
+     OR LOWER(summary) LIKE '%hotfix%'
+     OR LOWER(summary) LIKE '%exploit%'
+     OR LOWER(summary) LIKE '%incident%'
+     OR LOWER(summary) LIKE '%sự cố%'
+     OR LOWER(labels) LIKE '%security%'
+     OR LOWER(labels) LIKE '%vulnerability%'
+     OR LOWER(issue_type_name) LIKE '%security%'
+     OR LOWER(issue_type_name) LIKE '%vulnerability%'
+)
+SELECT
+  project_key,
+  COUNT(*) as total,
+  SUM(CASE WHEN status_category != 'Done' THEN 1 ELSE 0 END) as open,
+  SUM(CASE WHEN status_category = 'Done' THEN 1 ELSE 0 END) as closed,
+  SUM(CASE WHEN LOWER(priority_name) IN ('blocker','critical','highest','high') AND status_category != 'Done' THEN 1 ELSE 0 END) as high_open,
+  SUM(CASE WHEN due_date IS NOT NULL AND due_date < date('now') AND status_category != 'Done' THEN 1 ELSE 0 END) as overdue,
+  ROUND(AVG(CASE WHEN resolved IS NOT NULL THEN julianday(resolved) - julianday(created) END), 1) as avg_resolution_days,
+  MIN(SUBSTR(created, 1, 10)) as earliest,
+  MAX(SUBSTR(created, 1, 10)) as latest
+FROM security_issues
+GROUP BY project_key
+ORDER BY total DESC`
+  },
+
+  'vul-03-stats-by-priority': {
+    category: 'Vuln - Overview',
+    title: 'Thống kê issues ATTT theo Priority',
+    description: 'Phân bổ theo mức ưu tiên. Đánh giá có phân loại severity hợp lý không.',
+    sql: `
+WITH security_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%vulnerab%' OR LOWER(summary) LIKE '%security%'
+     OR LOWER(summary) LIKE '%bảo mật%' OR LOWER(summary) LIKE '%bao mat%'
+     OR LOWER(summary) LIKE '%lỗ hổng%' OR LOWER(summary) LIKE '%lo hong%'
+     OR LOWER(summary) LIKE '%điểm yếu%' OR LOWER(summary) LIKE '%diem yeu%'
+     OR LOWER(summary) LIKE '%cve-%' OR LOWER(summary) LIKE '%pentest%'
+     OR LOWER(summary) LIKE '%patch%' OR LOWER(summary) LIKE '%hotfix%'
+     OR LOWER(summary) LIKE '%incident%' OR LOWER(summary) LIKE '%sự cố%'
+     OR LOWER(labels) LIKE '%security%' OR LOWER(labels) LIKE '%vulnerability%'
+     OR LOWER(issue_type_name) LIKE '%security%' OR LOWER(issue_type_name) LIKE '%vulnerability%'
+)
+SELECT
+  priority_name,
+  COUNT(*) as total,
+  SUM(CASE WHEN status_category != 'Done' THEN 1 ELSE 0 END) as still_open,
+  SUM(CASE WHEN status_category = 'Done' THEN 1 ELSE 0 END) as closed,
+  ROUND(AVG(CASE WHEN resolved IS NOT NULL THEN julianday(resolved) - julianday(created) END), 1) as avg_days_to_resolve,
+  MAX(CASE WHEN status_category != 'Done' THEN CAST(julianday('now') - julianday(created) AS INTEGER) END) as oldest_open_days,
+  SUM(CASE WHEN due_date IS NOT NULL AND due_date < date('now') AND status_category != 'Done' THEN 1 ELSE 0 END) as overdue
+FROM security_issues
+GROUP BY priority_name
+ORDER BY
+  CASE LOWER(priority_name) WHEN 'blocker' THEN 1 WHEN 'critical' THEN 2 WHEN 'highest' THEN 3 WHEN 'high' THEN 4 WHEN 'medium' THEN 5 WHEN 'low' THEN 6 WHEN 'lowest' THEN 7 ELSE 8 END`
+  },
+
+  'vul-04-stats-by-month': {
+    category: 'Vuln - Overview',
+    title: 'Xu hướng issues ATTT theo tháng (tạo vs đóng)',
+    description: 'Xu hướng phát hiện và xử lý điểm yếu theo thời gian. Đánh giá năng lực xử lý.',
+    sql: `
+WITH security_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%vulnerab%' OR LOWER(summary) LIKE '%security%'
+     OR LOWER(summary) LIKE '%bảo mật%' OR LOWER(summary) LIKE '%bao mat%'
+     OR LOWER(summary) LIKE '%lỗ hổng%' OR LOWER(summary) LIKE '%điểm yếu%'
+     OR LOWER(summary) LIKE '%cve-%' OR LOWER(summary) LIKE '%patch%'
+     OR LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%incident%'
+     OR LOWER(labels) LIKE '%security%' OR LOWER(labels) LIKE '%vulnerability%'
+     OR LOWER(issue_type_name) LIKE '%security%' OR LOWER(issue_type_name) LIKE '%vulnerability%'
+),
+months AS (
+  SELECT DISTINCT SUBSTR(created, 1, 7) as month FROM security_issues
+  UNION
+  SELECT DISTINCT SUBSTR(resolved, 1, 7) FROM security_issues WHERE resolved IS NOT NULL
+)
+SELECT
+  m.month,
+  COALESCE(c.created_count, 0) as created,
+  COALESCE(r.resolved_count, 0) as resolved,
+  COALESCE(c.created_count, 0) - COALESCE(r.resolved_count, 0) as net_new
+FROM months m
+LEFT JOIN (SELECT SUBSTR(created, 1, 7) as month, COUNT(*) as created_count FROM security_issues GROUP BY SUBSTR(created, 1, 7)) c ON m.month = c.month
+LEFT JOIN (SELECT SUBSTR(resolved, 1, 7) as month, COUNT(*) as resolved_count FROM security_issues WHERE resolved IS NOT NULL GROUP BY SUBSTR(resolved, 1, 7)) r ON m.month = r.month
+WHERE m.month IS NOT NULL
+ORDER BY m.month DESC`
+  },
+
+  // ================================================================
+  //  11. SLA & THỜI GIAN XỬ LÝ ĐIỂM YẾU (Vuln SLA)
+  // ================================================================
+
+  'vul-05-sla-breach-critical': {
+    category: 'Vuln - SLA',
+    title: 'Điểm yếu Critical/High mở quá 30 ngày',
+    description: 'Theo thông lệ ngân hàng, lỗ hổng Critical nên xử lý trong 7-15 ngày, High trong 30 ngày. Liệt kê các điểm yếu vi phạm SLA.',
+    sql: `
+WITH security_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%vulnerab%' OR LOWER(summary) LIKE '%security%'
+     OR LOWER(summary) LIKE '%bảo mật%' OR LOWER(summary) LIKE '%bao mat%'
+     OR LOWER(summary) LIKE '%lỗ hổng%' OR LOWER(summary) LIKE '%điểm yếu%'
+     OR LOWER(summary) LIKE '%cve-%' OR LOWER(summary) LIKE '%patch%'
+     OR LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%hotfix%'
+     OR LOWER(labels) LIKE '%security%' OR LOWER(labels) LIKE '%vulnerability%'
+     OR LOWER(issue_type_name) LIKE '%security%' OR LOWER(issue_type_name) LIKE '%vulnerability%'
+)
+SELECT
+  key, project_key, summary,
+  priority_name, status_name,
+  assignee_name,
+  created, due_date,
+  CAST(julianday('now') - julianday(created) AS INTEGER) as age_days,
+  CASE
+    WHEN LOWER(priority_name) IN ('blocker','critical','highest') AND CAST(julianday('now') - julianday(created) AS INTEGER) > 15 THEN 'CRITICAL SLA BREACH (>15d)'
+    WHEN LOWER(priority_name) = 'high' AND CAST(julianday('now') - julianday(created) AS INTEGER) > 30 THEN 'HIGH SLA BREACH (>30d)'
+    WHEN LOWER(priority_name) = 'medium' AND CAST(julianday('now') - julianday(created) AS INTEGER) > 90 THEN 'MEDIUM SLA BREACH (>90d)'
+    ELSE 'Within SLA'
+  END as sla_status
+FROM security_issues
+WHERE status_category != 'Done'
+  AND LOWER(priority_name) IN ('blocker','critical','highest','high','medium')
+  AND (
+    (LOWER(priority_name) IN ('blocker','critical','highest') AND CAST(julianday('now') - julianday(created) AS INTEGER) > 15)
+    OR (LOWER(priority_name) = 'high' AND CAST(julianday('now') - julianday(created) AS INTEGER) > 30)
+    OR (LOWER(priority_name) = 'medium' AND CAST(julianday('now') - julianday(created) AS INTEGER) > 90)
+  )
+ORDER BY
+  CASE LOWER(priority_name) WHEN 'blocker' THEN 1 WHEN 'critical' THEN 2 WHEN 'highest' THEN 3 WHEN 'high' THEN 4 WHEN 'medium' THEN 5 END,
+  age_days DESC`
+  },
+
+  'vul-06-resolution-time-analysis': {
+    category: 'Vuln - SLA',
+    title: 'Phân tích thời gian xử lý điểm yếu đã đóng',
+    description: 'Thống kê thời gian xử lý (từ tạo đến resolved) theo priority. Đánh giá có đáp ứng SLA không.',
+    sql: `
+WITH security_issues AS (
+  SELECT * FROM issues
+  WHERE (LOWER(summary) LIKE '%vulnerab%' OR LOWER(summary) LIKE '%security%'
+     OR LOWER(summary) LIKE '%bảo mật%' OR LOWER(summary) LIKE '%lỗ hổng%'
+     OR LOWER(summary) LIKE '%điểm yếu%' OR LOWER(summary) LIKE '%cve-%'
+     OR LOWER(summary) LIKE '%patch%' OR LOWER(summary) LIKE '%pentest%'
+     OR LOWER(labels) LIKE '%security%' OR LOWER(labels) LIKE '%vulnerability%'
+     OR LOWER(issue_type_name) LIKE '%security%' OR LOWER(issue_type_name) LIKE '%vulnerability%')
+    AND resolved IS NOT NULL
+)
+SELECT
+  priority_name,
+  COUNT(*) as total_resolved,
+  ROUND(MIN(julianday(resolved) - julianday(created)), 0) as min_days,
+  ROUND(AVG(julianday(resolved) - julianday(created)), 1) as avg_days,
+  ROUND(MAX(julianday(resolved) - julianday(created)), 0) as max_days,
+  SUM(CASE WHEN julianday(resolved) - julianday(created) <= 7 THEN 1 ELSE 0 END) as within_7d,
+  SUM(CASE WHEN julianday(resolved) - julianday(created) <= 30 THEN 1 ELSE 0 END) as within_30d,
+  SUM(CASE WHEN julianday(resolved) - julianday(created) <= 90 THEN 1 ELSE 0 END) as within_90d,
+  SUM(CASE WHEN julianday(resolved) - julianday(created) > 90 THEN 1 ELSE 0 END) as over_90d
+FROM security_issues
+GROUP BY priority_name
+ORDER BY
+  CASE LOWER(priority_name) WHEN 'blocker' THEN 1 WHEN 'critical' THEN 2 WHEN 'highest' THEN 3 WHEN 'high' THEN 4 WHEN 'medium' THEN 5 WHEN 'low' THEN 6 ELSE 7 END`
+  },
+
+  'vul-07-oldest-open-vulns': {
+    category: 'Vuln - SLA',
+    title: 'Top 50 điểm yếu mở lâu nhất',
+    description: 'Điểm yếu tồn đọng lâu nhất. Rủi ro cao nếu là lỗ hổng đã biết nhưng chưa xử lý.',
+    sql: `
+WITH security_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%vulnerab%' OR LOWER(summary) LIKE '%security%'
+     OR LOWER(summary) LIKE '%bảo mật%' OR LOWER(summary) LIKE '%bao mat%'
+     OR LOWER(summary) LIKE '%lỗ hổng%' OR LOWER(summary) LIKE '%điểm yếu%'
+     OR LOWER(summary) LIKE '%cve-%' OR LOWER(summary) LIKE '%patch%'
+     OR LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%hotfix%'
+     OR LOWER(labels) LIKE '%security%' OR LOWER(labels) LIKE '%vulnerability%'
+     OR LOWER(issue_type_name) LIKE '%security%' OR LOWER(issue_type_name) LIKE '%vulnerability%'
+)
+SELECT
+  key, project_key, summary,
+  priority_name, status_name,
+  assignee_name, reporter_name,
+  created, updated, due_date,
+  CAST(julianday('now') - julianday(created) AS INTEGER) as age_days,
+  CAST(julianday('now') - julianday(updated) AS INTEGER) as days_since_update
+FROM security_issues
+WHERE status_category != 'Done'
+ORDER BY age_days DESC
+LIMIT 50`
+  },
+
+  'vul-08-overdue-vulns': {
+    category: 'Vuln - SLA',
+    title: 'Điểm yếu quá hạn (due date đã qua)',
+    description: 'Issue ATTT có due date đã qua nhưng chưa đóng. Vi phạm cam kết xử lý.',
+    sql: `
+WITH security_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%vulnerab%' OR LOWER(summary) LIKE '%security%'
+     OR LOWER(summary) LIKE '%bảo mật%' OR LOWER(summary) LIKE '%lỗ hổng%'
+     OR LOWER(summary) LIKE '%điểm yếu%' OR LOWER(summary) LIKE '%cve-%'
+     OR LOWER(summary) LIKE '%patch%' OR LOWER(summary) LIKE '%pentest%'
+     OR LOWER(labels) LIKE '%security%' OR LOWER(labels) LIKE '%vulnerability%'
+     OR LOWER(issue_type_name) LIKE '%security%' OR LOWER(issue_type_name) LIKE '%vulnerability%'
+)
+SELECT
+  key, project_key, summary,
+  priority_name, status_name,
+  assignee_name,
+  due_date,
+  CAST(julianday('now') - julianday(due_date) AS INTEGER) as days_overdue,
+  created
+FROM security_issues
+WHERE due_date IS NOT NULL
+  AND due_date < date('now')
+  AND status_category != 'Done'
+ORDER BY days_overdue DESC`
+  },
+
+  // ================================================================
+  //  12. VÒNG ĐỜI ĐIỂM YẾU (Vulnerability Lifecycle)
+  // ================================================================
+
+  'vul-09-no-assignee': {
+    category: 'Vuln - Lifecycle',
+    title: 'Điểm yếu chưa có người xử lý (no assignee)',
+    description: 'Issue ATTT open nhưng chưa được giao cho ai. Rủi ro bị bỏ sót.',
+    sql: `
+WITH security_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%vulnerab%' OR LOWER(summary) LIKE '%security%'
+     OR LOWER(summary) LIKE '%bảo mật%' OR LOWER(summary) LIKE '%lỗ hổng%'
+     OR LOWER(summary) LIKE '%điểm yếu%' OR LOWER(summary) LIKE '%cve-%'
+     OR LOWER(summary) LIKE '%patch%' OR LOWER(summary) LIKE '%pentest%'
+     OR LOWER(labels) LIKE '%security%' OR LOWER(labels) LIKE '%vulnerability%'
+     OR LOWER(issue_type_name) LIKE '%security%' OR LOWER(issue_type_name) LIKE '%vulnerability%'
+)
+SELECT
+  key, project_key, summary,
+  priority_name, status_name, reporter_name,
+  created,
+  CAST(julianday('now') - julianday(created) AS INTEGER) as age_days
+FROM security_issues
+WHERE assignee_key IS NULL
+  AND status_category != 'Done'
+ORDER BY
+  CASE LOWER(priority_name) WHEN 'blocker' THEN 1 WHEN 'critical' THEN 2 WHEN 'highest' THEN 3 WHEN 'high' THEN 4 ELSE 5 END,
+  created ASC`
+  },
+
+  'vul-10-no-due-date': {
+    category: 'Vuln - Lifecycle',
+    title: 'Điểm yếu open không có Due Date',
+    description: 'Issue ATTT open nhưng không có deadline. Không thể theo dõi SLA và cam kết xử lý.',
+    sql: `
+WITH security_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%vulnerab%' OR LOWER(summary) LIKE '%security%'
+     OR LOWER(summary) LIKE '%bảo mật%' OR LOWER(summary) LIKE '%lỗ hổng%'
+     OR LOWER(summary) LIKE '%điểm yếu%' OR LOWER(summary) LIKE '%cve-%'
+     OR LOWER(summary) LIKE '%patch%' OR LOWER(summary) LIKE '%pentest%'
+     OR LOWER(labels) LIKE '%security%' OR LOWER(labels) LIKE '%vulnerability%'
+     OR LOWER(issue_type_name) LIKE '%security%' OR LOWER(issue_type_name) LIKE '%vulnerability%'
+)
+SELECT
+  key, project_key, summary,
+  priority_name, status_name,
+  assignee_name,
+  created,
+  CAST(julianday('now') - julianday(created) AS INTEGER) as age_days
+FROM security_issues
+WHERE due_date IS NULL
+  AND status_category != 'Done'
+ORDER BY
+  CASE LOWER(priority_name) WHEN 'blocker' THEN 1 WHEN 'critical' THEN 2 WHEN 'highest' THEN 3 WHEN 'high' THEN 4 ELSE 5 END,
+  age_days DESC`
+  },
+
+  'vul-11-reopened-vulns': {
+    category: 'Vuln - Lifecycle',
+    title: 'Điểm yếu bị Reopen',
+    description: 'Issue ATTT từng Done/Closed nhưng bị reopen. Cho thấy xử lý chưa triệt để hoặc lỗ hổng tái phát.',
+    sql: `
+WITH security_issues AS (
+  SELECT key FROM issues
+  WHERE LOWER(summary) LIKE '%vulnerab%' OR LOWER(summary) LIKE '%security%'
+     OR LOWER(summary) LIKE '%bảo mật%' OR LOWER(summary) LIKE '%lỗ hổng%'
+     OR LOWER(summary) LIKE '%điểm yếu%' OR LOWER(summary) LIKE '%cve-%'
+     OR LOWER(summary) LIKE '%patch%' OR LOWER(summary) LIKE '%pentest%'
+     OR LOWER(labels) LIKE '%security%' OR LOWER(labels) LIKE '%vulnerability%'
+     OR LOWER(issue_type_name) LIKE '%security%' OR LOWER(issue_type_name) LIKE '%vulnerability%'
+)
+SELECT
+  ci.issue_key,
+  i.project_key, i.summary, i.priority_name, i.status_name, i.assignee_name,
+  COUNT(*) as reopen_count,
+  GROUP_CONCAT(c.author_name || ' (' || SUBSTR(c.created, 1, 10) || ')') as reopen_events
+FROM changelog_items ci
+JOIN changelogs c ON ci.changelog_id = c.id
+JOIN issues i ON ci.issue_key = i.key
+WHERE ci.field = 'status'
+  AND ci.issue_key IN (SELECT key FROM security_issues)
+  AND LOWER(ci.from_string) IN ('done', 'closed', 'resolved')
+  AND LOWER(ci.to_string) NOT IN ('done', 'closed', 'resolved')
+GROUP BY ci.issue_key
+ORDER BY reopen_count DESC`
+  },
+
+  'vul-12-stale-vulns': {
+    category: 'Vuln - Lifecycle',
+    title: 'Điểm yếu "chết" (open, không cập nhật > 60 ngày)',
+    description: 'Issue ATTT open nhưng không ai cập nhật gì > 60 ngày. Có thể bị quên hoặc bỏ sót.',
+    sql: `
+WITH security_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%vulnerab%' OR LOWER(summary) LIKE '%security%'
+     OR LOWER(summary) LIKE '%bảo mật%' OR LOWER(summary) LIKE '%lỗ hổng%'
+     OR LOWER(summary) LIKE '%điểm yếu%' OR LOWER(summary) LIKE '%cve-%'
+     OR LOWER(summary) LIKE '%patch%' OR LOWER(summary) LIKE '%pentest%'
+     OR LOWER(labels) LIKE '%security%' OR LOWER(labels) LIKE '%vulnerability%'
+     OR LOWER(issue_type_name) LIKE '%security%' OR LOWER(issue_type_name) LIKE '%vulnerability%'
+)
+SELECT
+  key, project_key, summary,
+  priority_name, status_name,
+  assignee_name,
+  created, updated,
+  CAST(julianday('now') - julianday(created) AS INTEGER) as age_days,
+  CAST(julianday('now') - julianday(updated) AS INTEGER) as days_since_update
+FROM security_issues
+WHERE status_category != 'Done'
+  AND CAST(julianday('now') - julianday(updated) AS INTEGER) > 60
+ORDER BY days_since_update DESC`
+  },
+
+  'vul-13-vuln-status-flow': {
+    category: 'Vuln - Lifecycle',
+    title: 'Lịch sử chuyển trạng thái các issue ATTT',
+    description: 'Toàn bộ lịch sử thay đổi status của issue ATTT. Đánh giá tuân thủ quy trình.',
+    sql: `
+WITH security_issues AS (
+  SELECT key FROM issues
+  WHERE LOWER(summary) LIKE '%vulnerab%' OR LOWER(summary) LIKE '%security%'
+     OR LOWER(summary) LIKE '%bảo mật%' OR LOWER(summary) LIKE '%lỗ hổng%'
+     OR LOWER(summary) LIKE '%điểm yếu%' OR LOWER(summary) LIKE '%cve-%'
+     OR LOWER(summary) LIKE '%patch%' OR LOWER(summary) LIKE '%pentest%'
+     OR LOWER(labels) LIKE '%security%' OR LOWER(labels) LIKE '%vulnerability%'
+     OR LOWER(issue_type_name) LIKE '%security%' OR LOWER(issue_type_name) LIKE '%vulnerability%'
+)
+SELECT
+  ci.issue_key,
+  i.summary,
+  ci.from_string as from_status,
+  ci.to_string as to_status,
+  c.author_name as changed_by,
+  c.created as changed_at
+FROM changelog_items ci
+JOIN changelogs c ON ci.changelog_id = c.id
+JOIN issues i ON ci.issue_key = i.key
+WHERE ci.field = 'status'
+  AND ci.issue_key IN (SELECT key FROM security_issues)
+ORDER BY ci.issue_key, c.created`
+  },
+
+  // ================================================================
+  //  13. PATCH MANAGEMENT
+  // ================================================================
+
+  'patch-01-all-patch-issues': {
+    category: 'Patch Management',
+    title: 'Tất cả issues liên quan Patch / Hotfix / Update',
+    description: 'Liệt kê tất cả issue liên quan đến vá lỗi, cập nhật bảo mật.',
+    sql: `
+SELECT
+  key, project_key, issue_type_name, summary,
+  priority_name, status_name, status_category,
+  assignee_name, reporter_name,
+  created, updated, resolved, due_date,
+  CAST(julianday('now') - julianday(created) AS INTEGER) as age_days,
+  CASE WHEN resolved IS NOT NULL THEN CAST(julianday(resolved) - julianday(created) AS INTEGER) END as resolution_days
+FROM issues
+WHERE LOWER(summary) LIKE '%patch%'
+   OR LOWER(summary) LIKE '%hotfix%'
+   OR LOWER(summary) LIKE '%vá lỗi%'
+   OR LOWER(summary) LIKE '%va loi%'
+   OR LOWER(summary) LIKE '%cập nhật bảo mật%'
+   OR LOWER(summary) LIKE '%cap nhat bao mat%'
+   OR LOWER(summary) LIKE '%security update%'
+   OR LOWER(summary) LIKE '%firmware update%'
+   OR LOWER(summary) LIKE '%upgrade%'
+   OR LOWER(summary) LIKE '%nâng cấp%'
+   OR LOWER(labels) LIKE '%patch%'
+   OR LOWER(labels) LIKE '%hotfix%'
+ORDER BY created DESC`
+  },
+
+  'patch-02-open-patches': {
+    category: 'Patch Management',
+    title: 'Patches chưa hoàn thành',
+    description: 'Patches/hotfix vẫn open. Đánh giá tồn đọng vá lỗi.',
+    sql: `
+SELECT
+  key, project_key, summary,
+  priority_name, status_name,
+  assignee_name,
+  created, due_date,
+  CAST(julianday('now') - julianday(created) AS INTEGER) as age_days,
+  CASE WHEN due_date IS NOT NULL AND due_date < date('now') THEN 'OVERDUE' ELSE 'On track' END as deadline_status
+FROM issues
+WHERE (LOWER(summary) LIKE '%patch%' OR LOWER(summary) LIKE '%hotfix%'
+    OR LOWER(summary) LIKE '%security update%' OR LOWER(summary) LIKE '%vá lỗi%'
+    OR LOWER(labels) LIKE '%patch%' OR LOWER(labels) LIKE '%hotfix%')
+  AND status_category != 'Done'
+ORDER BY
+  CASE LOWER(priority_name) WHEN 'blocker' THEN 1 WHEN 'critical' THEN 2 WHEN 'highest' THEN 3 WHEN 'high' THEN 4 ELSE 5 END,
+  age_days DESC`
+  },
+
+  // ================================================================
+  //  14. PENTEST & VA SCAN
+  // ================================================================
+
+  'pt-01-pentest-issues': {
+    category: 'Pentest & VA',
+    title: 'Issues từ Pentest / Đánh giá ATTT',
+    description: 'Issue phát sinh từ pentest, đánh giá bảo mật, VA scan.',
+    sql: `
+SELECT
+  key, project_key, issue_type_name, summary,
+  priority_name, status_name, status_category,
+  assignee_name, reporter_name,
+  created, resolved, due_date,
+  CAST(julianday('now') - julianday(created) AS INTEGER) as age_days,
+  CASE WHEN resolved IS NOT NULL THEN CAST(julianday(resolved) - julianday(created) AS INTEGER) END as resolution_days,
+  labels
+FROM issues
+WHERE LOWER(summary) LIKE '%pentest%'
+   OR LOWER(summary) LIKE '%pen test%'
+   OR LOWER(summary) LIKE '%penetration%'
+   OR LOWER(summary) LIKE '%va scan%'
+   OR LOWER(summary) LIKE '%vulnerability assessment%'
+   OR LOWER(summary) LIKE '%đánh giá%attt%'
+   OR LOWER(summary) LIKE '%đánh giá%bảo mật%'
+   OR LOWER(summary) LIKE '%danh gia%bao mat%'
+   OR LOWER(summary) LIKE '%security assessment%'
+   OR LOWER(summary) LIKE '%security review%'
+   OR LOWER(summary) LIKE '%code review%'
+   OR LOWER(summary) LIKE '%rà soát%'
+   OR LOWER(summary) LIKE '%ra soat%'
+   OR LOWER(summary) LIKE '%nessus%'
+   OR LOWER(summary) LIKE '%qualys%'
+   OR LOWER(summary) LIKE '%burp%'
+   OR LOWER(summary) LIKE '%acunetix%'
+   OR LOWER(summary) LIKE '%owasp%'
+   OR LOWER(labels) LIKE '%pentest%'
+   OR LOWER(labels) LIKE '%va-scan%'
+ORDER BY created DESC`
+  },
+
+  'pt-02-pentest-open-findings': {
+    category: 'Pentest & VA',
+    title: 'Findings từ Pentest/VA chưa xử lý xong',
+    description: 'Phát hiện từ pentest/VA vẫn open. Cần đánh giá tiến độ khắc phục.',
+    sql: `
+SELECT
+  key, project_key, summary,
+  priority_name, status_name,
+  assignee_name,
+  created, due_date,
+  CAST(julianday('now') - julianday(created) AS INTEGER) as age_days,
+  CASE
+    WHEN due_date IS NOT NULL AND due_date < date('now') THEN 'OVERDUE'
+    WHEN due_date IS NOT NULL THEN 'Has deadline'
+    ELSE 'NO DEADLINE'
+  END as deadline_status
+FROM issues
+WHERE (LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%penetration%'
+    OR LOWER(summary) LIKE '%va scan%' OR LOWER(summary) LIKE '%vulnerability assessment%'
+    OR LOWER(summary) LIKE '%đánh giá%bảo mật%' OR LOWER(summary) LIKE '%security assessment%'
+    OR LOWER(summary) LIKE '%nessus%' OR LOWER(summary) LIKE '%qualys%'
+    OR LOWER(labels) LIKE '%pentest%' OR LOWER(labels) LIKE '%va-scan%')
+  AND status_category != 'Done'
+ORDER BY
+  CASE LOWER(priority_name) WHEN 'blocker' THEN 1 WHEN 'critical' THEN 2 WHEN 'highest' THEN 3 WHEN 'high' THEN 4 ELSE 5 END,
+  age_days DESC`
+  },
+
+  // ================================================================
+  //  15. CVE & LỖ HỔNG CỤ THỂ
+  // ================================================================
+
+  'cve-01-cve-tracking': {
+    category: 'CVE Tracking',
+    title: 'Issues có mã CVE',
+    description: 'Issue đề cập đến CVE cụ thể. Đánh giá việc theo dõi lỗ hổng công bố.',
+    sql: `
+SELECT
+  key, project_key, summary,
+  priority_name, status_name, status_category,
+  assignee_name,
+  created, resolved, due_date,
+  CAST(julianday('now') - julianday(created) AS INTEGER) as age_days,
+  CASE WHEN resolved IS NOT NULL THEN CAST(julianday(resolved) - julianday(created) AS INTEGER) END as resolution_days
+FROM issues
+WHERE LOWER(summary) LIKE '%cve-%'
+   OR LOWER(description) LIKE '%cve-%'
+ORDER BY created DESC`
+  },
+
+  'cve-02-cve-open': {
+    category: 'CVE Tracking',
+    title: 'CVE chưa xử lý xong',
+    description: 'Lỗ hổng CVE đã biết nhưng chưa được khắc phục.',
+    sql: `
+SELECT
+  key, project_key, summary,
+  priority_name, status_name,
+  assignee_name,
+  created, due_date,
+  CAST(julianday('now') - julianday(created) AS INTEGER) as age_days
+FROM issues
+WHERE (LOWER(summary) LIKE '%cve-%' OR LOWER(description) LIKE '%cve-%')
+  AND status_category != 'Done'
+ORDER BY
+  CASE LOWER(priority_name) WHEN 'blocker' THEN 1 WHEN 'critical' THEN 2 WHEN 'highest' THEN 3 WHEN 'high' THEN 4 ELSE 5 END,
+  age_days DESC`
+  },
+
+  // ================================================================
+  //  16. SỰ CỐ ATTT (Security Incidents)
+  // ================================================================
+
+  'inc-01-security-incidents': {
+    category: 'Security Incidents',
+    title: 'Issues liên quan sự cố ATTT',
+    description: 'Tất cả issue liên quan đến sự cố bảo mật, incident, breach, tấn công.',
+    sql: `
+SELECT
+  key, project_key, issue_type_name, summary,
+  priority_name, status_name, status_category,
+  assignee_name, reporter_name,
+  created, resolved,
+  CASE WHEN resolved IS NOT NULL THEN CAST(julianday(resolved) - julianday(created) AS INTEGER) END as resolution_days,
+  labels
+FROM issues
+WHERE LOWER(summary) LIKE '%incident%'
+   OR LOWER(summary) LIKE '%sự cố%'
+   OR LOWER(summary) LIKE '%su co%'
+   OR LOWER(summary) LIKE '%breach%'
+   OR LOWER(summary) LIKE '%tấn công%'
+   OR LOWER(summary) LIKE '%tan cong%'
+   OR LOWER(summary) LIKE '%attack%'
+   OR LOWER(summary) LIKE '%intrusion%'
+   OR LOWER(summary) LIKE '%xâm nhập%'
+   OR LOWER(summary) LIKE '%malware%'
+   OR LOWER(summary) LIKE '%ransomware%'
+   OR LOWER(summary) LIKE '%phishing%'
+   OR LOWER(summary) LIKE '%ddos%'
+   OR LOWER(summary) LIKE '%data leak%'
+   OR LOWER(summary) LIKE '%rò rỉ%'
+   OR LOWER(summary) LIKE '%ro ri%'
+   OR LOWER(issue_type_name) LIKE '%incident%'
+   OR LOWER(labels) LIKE '%incident%'
+ORDER BY created DESC`
+  },
+
+  'inc-02-incident-response-time': {
+    category: 'Security Incidents',
+    title: 'Thời gian phản hồi sự cố ATTT',
+    description: 'Phân tích thời gian từ tạo đến lần cập nhật đầu tiên và đến khi đóng.',
+    sql: `
+WITH incident_issues AS (
+  SELECT key, summary, priority_name, created, resolved, project_key, assignee_name
+  FROM issues
+  WHERE LOWER(summary) LIKE '%incident%' OR LOWER(summary) LIKE '%sự cố%'
+     OR LOWER(summary) LIKE '%su co%' OR LOWER(summary) LIKE '%breach%'
+     OR LOWER(summary) LIKE '%attack%' OR LOWER(summary) LIKE '%tấn công%'
+     OR LOWER(issue_type_name) LIKE '%incident%' OR LOWER(labels) LIKE '%incident%'
+),
+first_response AS (
+  SELECT
+    ii.key,
+    MIN(c.created) as first_comment_at
+  FROM incident_issues ii
+  LEFT JOIN comments c ON ii.key = c.issue_key AND c.created > ii.created
+  GROUP BY ii.key
+)
+SELECT
+  ii.key, ii.project_key, ii.summary,
+  ii.priority_name, ii.assignee_name,
+  ii.created,
+  fr.first_comment_at,
+  CASE WHEN fr.first_comment_at IS NOT NULL
+    THEN ROUND((julianday(fr.first_comment_at) - julianday(ii.created)) * 24, 1)
+    ELSE NULL END as response_hours,
+  ii.resolved,
+  CASE WHEN ii.resolved IS NOT NULL
+    THEN CAST(julianday(ii.resolved) - julianday(ii.created) AS INTEGER)
+    ELSE NULL END as resolution_days
+FROM incident_issues ii
+LEFT JOIN first_response fr ON ii.key = fr.key
+ORDER BY ii.created DESC`
+  },
+
+  // ================================================================
+  //  17. NGƯỜI XỬ LÝ ĐIỂM YẾU (Who handles vulns)
+  // ================================================================
+
+  'who-01-vuln-assignee-stats': {
+    category: 'Vuln - Responsibility',
+    title: 'Thống kê người xử lý điểm yếu ATTT',
+    description: 'Ai xử lý bao nhiêu issue ATTT, tỷ lệ hoàn thành, thời gian trung bình.',
+    sql: `
+WITH security_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%vulnerab%' OR LOWER(summary) LIKE '%security%'
+     OR LOWER(summary) LIKE '%bảo mật%' OR LOWER(summary) LIKE '%lỗ hổng%'
+     OR LOWER(summary) LIKE '%điểm yếu%' OR LOWER(summary) LIKE '%cve-%'
+     OR LOWER(summary) LIKE '%patch%' OR LOWER(summary) LIKE '%pentest%'
+     OR LOWER(summary) LIKE '%incident%' OR LOWER(summary) LIKE '%sự cố%'
+     OR LOWER(labels) LIKE '%security%' OR LOWER(labels) LIKE '%vulnerability%'
+     OR LOWER(issue_type_name) LIKE '%security%' OR LOWER(issue_type_name) LIKE '%vulnerability%'
+)
+SELECT
+  assignee_name,
+  COUNT(*) as total_assigned,
+  SUM(CASE WHEN status_category = 'Done' THEN 1 ELSE 0 END) as completed,
+  SUM(CASE WHEN status_category != 'Done' THEN 1 ELSE 0 END) as open,
+  ROUND(100.0 * SUM(CASE WHEN status_category = 'Done' THEN 1 ELSE 0 END) / COUNT(*), 1) as completion_pct,
+  ROUND(AVG(CASE WHEN resolved IS NOT NULL THEN julianday(resolved) - julianday(created) END), 1) as avg_resolution_days,
+  SUM(CASE WHEN LOWER(priority_name) IN ('blocker','critical','highest','high') AND status_category != 'Done' THEN 1 ELSE 0 END) as high_open
+FROM security_issues
+WHERE assignee_name IS NOT NULL
+GROUP BY assignee_key
+ORDER BY total_assigned DESC`
+  },
+
+  'who-02-vuln-reporter-stats': {
+    category: 'Vuln - Responsibility',
+    title: 'Nguồn phát hiện điểm yếu (Reporter)',
+    description: 'Ai/đội nào report nhiều issue ATTT nhất. Đánh giá nguồn phát hiện lỗ hổng.',
+    sql: `
+WITH security_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%vulnerab%' OR LOWER(summary) LIKE '%security%'
+     OR LOWER(summary) LIKE '%bảo mật%' OR LOWER(summary) LIKE '%lỗ hổng%'
+     OR LOWER(summary) LIKE '%điểm yếu%' OR LOWER(summary) LIKE '%cve-%'
+     OR LOWER(summary) LIKE '%patch%' OR LOWER(summary) LIKE '%pentest%'
+     OR LOWER(summary) LIKE '%incident%'
+     OR LOWER(labels) LIKE '%security%' OR LOWER(labels) LIKE '%vulnerability%'
+     OR LOWER(issue_type_name) LIKE '%security%' OR LOWER(issue_type_name) LIKE '%vulnerability%'
+)
+SELECT
+  reporter_name,
+  COUNT(*) as total_reported,
+  SUM(CASE WHEN status_category = 'Done' THEN 1 ELSE 0 END) as resolved,
+  SUM(CASE WHEN status_category != 'Done' THEN 1 ELSE 0 END) as still_open,
+  COUNT(DISTINCT project_key) as projects,
+  MIN(SUBSTR(created, 1, 10)) as first_report,
+  MAX(SUBSTR(created, 1, 10)) as last_report
+FROM security_issues
+WHERE reporter_name IS NOT NULL
+GROUP BY reporter_key
+ORDER BY total_reported DESC`
+  },
+
+  // ================================================================
+  //  18. COMPLIANCE & CHÍNH SÁCH
+  // ================================================================
+
+  'comp-01-compliance-issues': {
+    category: 'Compliance',
+    title: 'Issues liên quan tuân thủ / compliance / chính sách',
+    description: 'Issue liên quan đến compliance, tuân thủ quy định, chính sách, tiêu chuẩn (PCI-DSS, ISO 27001, NHNN...).',
+    sql: `
+SELECT
+  key, project_key, issue_type_name, summary,
+  priority_name, status_name, status_category,
+  assignee_name, reporter_name,
+  created, resolved, due_date,
+  CAST(julianday('now') - julianday(created) AS INTEGER) as age_days
+FROM issues
+WHERE LOWER(summary) LIKE '%compliance%'
+   OR LOWER(summary) LIKE '%tuân thủ%'
+   OR LOWER(summary) LIKE '%tuan thu%'
+   OR LOWER(summary) LIKE '%chính sách%'
+   OR LOWER(summary) LIKE '%chinh sach%'
+   OR LOWER(summary) LIKE '%policy%'
+   OR LOWER(summary) LIKE '%quy định%'
+   OR LOWER(summary) LIKE '%quy dinh%'
+   OR LOWER(summary) LIKE '%regulation%'
+   OR LOWER(summary) LIKE '%pci%'
+   OR LOWER(summary) LIKE '%iso 27%'
+   OR LOWER(summary) LIKE '%iso27%'
+   OR LOWER(summary) LIKE '%nhnn%'
+   OR LOWER(summary) LIKE '%ngân hàng nhà nước%'
+   OR LOWER(summary) LIKE '%ngan hang nha nuoc%'
+   OR LOWER(summary) LIKE '%thông tư%'
+   OR LOWER(summary) LIKE '%thong tu%'
+   OR LOWER(summary) LIKE '%circular%'
+   OR LOWER(summary) LIKE '%sox%'
+   OR LOWER(summary) LIKE '%gdpr%'
+   OR LOWER(summary) LIKE '%audit finding%'
+   OR LOWER(summary) LIKE '%kiểm toán%'
+   OR LOWER(summary) LIKE '%kiem toan%'
+   OR LOWER(labels) LIKE '%compliance%'
+   OR LOWER(labels) LIKE '%audit%'
+   OR LOWER(labels) LIKE '%policy%'
+ORDER BY created DESC`
+  },
+
+  // ================================================================
+  //  19. BÁO CÁO TỔNG HỢP CHO KIỂM TOÁN
+  // ================================================================
+
+  'vrpt-01-executive-summary': {
+    category: 'Vuln - Report',
+    title: 'TỔNG HỢP: Điểm yếu ATTT - Executive Summary',
+    description: 'Bảng tổng hợp cho báo cáo kiểm toán: tổng số, phân loại, SLA, tồn đọng.',
+    sql: `
+WITH security_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%vulnerab%' OR LOWER(summary) LIKE '%security%'
+     OR LOWER(summary) LIKE '%bảo mật%' OR LOWER(summary) LIKE '%bao mat%'
+     OR LOWER(summary) LIKE '%lỗ hổng%' OR LOWER(summary) LIKE '%điểm yếu%'
+     OR LOWER(summary) LIKE '%cve-%' OR LOWER(summary) LIKE '%patch%'
+     OR LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%hotfix%'
+     OR LOWER(summary) LIKE '%incident%' OR LOWER(summary) LIKE '%sự cố%'
+     OR LOWER(labels) LIKE '%security%' OR LOWER(labels) LIKE '%vulnerability%'
+     OR LOWER(issue_type_name) LIKE '%security%' OR LOWER(issue_type_name) LIKE '%vulnerability%'
+)
+SELECT 'Total security issues' as metric, COUNT(*) as value FROM security_issues
+UNION ALL SELECT 'Currently Open', COUNT(*) FROM security_issues WHERE status_category != 'Done'
+UNION ALL SELECT 'Closed/Resolved', COUNT(*) FROM security_issues WHERE status_category = 'Done'
+UNION ALL SELECT 'Open - Critical/High', COUNT(*) FROM security_issues WHERE status_category != 'Done' AND LOWER(priority_name) IN ('blocker','critical','highest','high')
+UNION ALL SELECT 'Open - No Assignee', COUNT(*) FROM security_issues WHERE status_category != 'Done' AND assignee_key IS NULL
+UNION ALL SELECT 'Open - No Due Date', COUNT(*) FROM security_issues WHERE status_category != 'Done' AND due_date IS NULL
+UNION ALL SELECT 'Open - Overdue', COUNT(*) FROM security_issues WHERE status_category != 'Done' AND due_date IS NOT NULL AND due_date < date('now')
+UNION ALL SELECT 'Open > 30 days', COUNT(*) FROM security_issues WHERE status_category != 'Done' AND julianday('now') - julianday(created) > 30
+UNION ALL SELECT 'Open > 90 days', COUNT(*) FROM security_issues WHERE status_category != 'Done' AND julianday('now') - julianday(created) > 90
+UNION ALL SELECT 'Open > 180 days', COUNT(*) FROM security_issues WHERE status_category != 'Done' AND julianday('now') - julianday(created) > 180
+UNION ALL SELECT 'Open > 365 days', COUNT(*) FROM security_issues WHERE status_category != 'Done' AND julianday('now') - julianday(created) > 365
+UNION ALL SELECT 'Avg Resolution Days (closed)', ROUND(AVG(julianday(resolved) - julianday(created)), 1) FROM security_issues WHERE resolved IS NOT NULL
+UNION ALL SELECT 'Reopened issues', COUNT(DISTINCT ci.issue_key) FROM changelog_items ci JOIN changelogs c ON ci.changelog_id = c.id WHERE ci.field = 'status' AND LOWER(ci.from_string) IN ('done','closed','resolved') AND ci.issue_key IN (SELECT key FROM security_issues)
+UNION ALL SELECT 'Unique projects affected', COUNT(DISTINCT project_key) FROM security_issues
+UNION ALL SELECT 'Unique assignees', COUNT(DISTINCT assignee_key) FROM security_issues WHERE assignee_key IS NOT NULL
+UNION ALL SELECT 'Issues with CVE reference', COUNT(*) FROM security_issues WHERE LOWER(summary) LIKE '%cve-%' OR LOWER(description) LIKE '%cve-%'`
+  },
+
+  'vrpt-02-aging-report': {
+    category: 'Vuln - Report',
+    title: 'TỔNG HỢP: Phân tích Aging theo Priority',
+    description: 'Bảng aging (tuổi tồn đọng) theo priority. Phục vụ báo cáo kiểm toán.',
+    sql: `
+WITH security_issues AS (
+  SELECT * FROM issues
+  WHERE (LOWER(summary) LIKE '%vulnerab%' OR LOWER(summary) LIKE '%security%'
+     OR LOWER(summary) LIKE '%bảo mật%' OR LOWER(summary) LIKE '%lỗ hổng%'
+     OR LOWER(summary) LIKE '%điểm yếu%' OR LOWER(summary) LIKE '%cve-%'
+     OR LOWER(summary) LIKE '%patch%' OR LOWER(summary) LIKE '%pentest%'
+     OR LOWER(labels) LIKE '%security%' OR LOWER(labels) LIKE '%vulnerability%'
+     OR LOWER(issue_type_name) LIKE '%security%' OR LOWER(issue_type_name) LIKE '%vulnerability%')
+    AND status_category != 'Done'
+)
+SELECT
+  priority_name,
+  COUNT(*) as total_open,
+  SUM(CASE WHEN julianday('now') - julianday(created) <= 7 THEN 1 ELSE 0 END) as "0-7d",
+  SUM(CASE WHEN julianday('now') - julianday(created) > 7 AND julianday('now') - julianday(created) <= 30 THEN 1 ELSE 0 END) as "8-30d",
+  SUM(CASE WHEN julianday('now') - julianday(created) > 30 AND julianday('now') - julianday(created) <= 90 THEN 1 ELSE 0 END) as "31-90d",
+  SUM(CASE WHEN julianday('now') - julianday(created) > 90 AND julianday('now') - julianday(created) <= 180 THEN 1 ELSE 0 END) as "91-180d",
+  SUM(CASE WHEN julianday('now') - julianday(created) > 180 AND julianday('now') - julianday(created) <= 365 THEN 1 ELSE 0 END) as "181-365d",
+  SUM(CASE WHEN julianday('now') - julianday(created) > 365 THEN 1 ELSE 0 END) as ">365d"
+FROM security_issues
+GROUP BY priority_name
+ORDER BY
+  CASE LOWER(priority_name) WHEN 'blocker' THEN 1 WHEN 'critical' THEN 2 WHEN 'highest' THEN 3 WHEN 'high' THEN 4 WHEN 'medium' THEN 5 WHEN 'low' THEN 6 ELSE 7 END`
+  },
+
+  'vrpt-03-all-open-detail': {
+    category: 'Vuln - Report',
+    title: 'TỔNG HỢP: Chi tiết tất cả điểm yếu đang mở',
+    description: 'Danh sách đầy đủ tất cả issue ATTT đang open - dùng để attach vào báo cáo kiểm toán.',
+    sql: `
+WITH security_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%vulnerab%' OR LOWER(summary) LIKE '%security%'
+     OR LOWER(summary) LIKE '%bảo mật%' OR LOWER(summary) LIKE '%bao mat%'
+     OR LOWER(summary) LIKE '%lỗ hổng%' OR LOWER(summary) LIKE '%điểm yếu%'
+     OR LOWER(summary) LIKE '%cve-%' OR LOWER(summary) LIKE '%patch%'
+     OR LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%hotfix%'
+     OR LOWER(summary) LIKE '%incident%' OR LOWER(summary) LIKE '%sự cố%'
+     OR LOWER(labels) LIKE '%security%' OR LOWER(labels) LIKE '%vulnerability%'
+     OR LOWER(issue_type_name) LIKE '%security%' OR LOWER(issue_type_name) LIKE '%vulnerability%'
+)
+SELECT
+  key as "Issue Key",
+  project_key as "Project",
+  issue_type_name as "Type",
+  priority_name as "Priority",
+  status_name as "Status",
+  summary as "Summary",
+  assignee_name as "Assignee",
+  reporter_name as "Reporter",
+  SUBSTR(created, 1, 10) as "Created",
+  due_date as "Due Date",
+  CAST(julianday('now') - julianday(created) AS INTEGER) as "Age (days)",
+  CASE
+    WHEN due_date IS NOT NULL AND due_date < date('now') THEN 'OVERDUE'
+    WHEN due_date IS NULL THEN 'NO DEADLINE'
+    ELSE 'On track'
+  END as "Deadline Status",
+  CASE
+    WHEN assignee_key IS NULL THEN 'UNASSIGNED'
+    ELSE 'Assigned'
+  END as "Assignment Status",
+  labels as "Labels",
+  security_level as "Security Level"
+FROM security_issues
+WHERE status_category != 'Done'
+ORDER BY
+  CASE LOWER(priority_name) WHEN 'blocker' THEN 1 WHEN 'critical' THEN 2 WHEN 'highest' THEN 3 WHEN 'high' THEN 4 WHEN 'medium' THEN 5 WHEN 'low' THEN 6 ELSE 7 END,
+  created ASC`
+  },
 };
 
 module.exports = { AUDIT_QUERIES };
