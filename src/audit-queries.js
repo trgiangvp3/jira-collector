@@ -2298,6 +2298,574 @@ LEFT JOIN config_issues ci ON (
 GROUP BY sl.sys_name, sl.sys_level
 ORDER BY sl.sys_level DESC, COUNT(ci.key) ASC, sl.sys_name`
   },
+
+  // ================================================================
+  //  R1. BACKDATING - Dấu hiệu tạo issue/tài liệu hậu kỳ
+  // ================================================================
+
+  'r1-01-pentest-creation-clusters': {
+    category: 'R1 - Backdating',
+    title: '[R1] Cluster tạo issue pentest cùng ngày/tuần',
+    description: 'Nếu nhiều issue pentest cho nhiều hệ thống khác nhau được tạo cùng 1 ngày hoặc cùng 1 tuần, đó là dấu hiệu batch-create hậu kỳ thay vì tạo theo tiến độ thực tế.',
+    sql: `
+WITH pentest_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%penetration%'
+     OR LOWER(summary) LIKE '%va scan%' OR LOWER(summary) LIKE '%vulnerability assessment%'
+     OR LOWER(summary) LIKE '%đánh giá%bảo mật%' OR LOWER(summary) LIKE '%security assessment%'
+     OR LOWER(summary) LIKE '%security test%'
+     OR LOWER(labels) LIKE '%pentest%' OR LOWER(labels) LIKE '%va-scan%'
+)
+SELECT
+  SUBSTR(created, 1, 10) as creation_date,
+  COUNT(*) as issues_created,
+  COUNT(DISTINCT project_key) as distinct_projects,
+  GROUP_CONCAT(DISTINCT project_key) as projects,
+  GROUP_CONCAT(key || ': ' || SUBSTR(summary, 1, 60), ' | ') as issues
+FROM pentest_issues
+GROUP BY SUBSTR(created, 1, 10)
+HAVING issues_created >= 3
+ORDER BY issues_created DESC`
+  },
+
+  'r1-02-created-vs-resolved-same-day': {
+    category: 'R1 - Backdating',
+    title: '[R1] Issues pentest tạo và đóng cùng ngày',
+    description: 'Issue ATTT được tạo và resolved cùng ngày là bất thường - có thể tạo hình thức để đối phó. Pentest thực tế cần thời gian để phát hiện, báo cáo, xử lý.',
+    sql: `
+WITH pentest_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%penetration%'
+     OR LOWER(summary) LIKE '%va scan%' OR LOWER(summary) LIKE '%vulnerability assessment%'
+     OR LOWER(summary) LIKE '%đánh giá%bảo mật%' OR LOWER(summary) LIKE '%security assessment%'
+     OR LOWER(summary) LIKE '%security test%' OR LOWER(summary) LIKE '%finding%'
+     OR LOWER(labels) LIKE '%pentest%' OR LOWER(labels) LIKE '%va-scan%'
+)
+SELECT
+  key, project_key, summary,
+  priority_name, status_name,
+  assignee_name, reporter_name,
+  SUBSTR(created, 1, 10) as created_date,
+  SUBSTR(resolved, 1, 10) as resolved_date,
+  ROUND((julianday(resolved) - julianday(created)) * 24, 1) as hours_to_resolve
+FROM pentest_issues
+WHERE resolved IS NOT NULL
+  AND SUBSTR(created, 1, 10) = SUBSTR(resolved, 1, 10)
+ORDER BY created DESC`
+  },
+
+  'r1-03-bulk-resolve-pattern': {
+    category: 'R1 - Backdating',
+    title: '[R1] Bulk resolve - nhiều issue ATTT đóng cùng ngày bởi cùng người',
+    description: 'Nhiều issue security được resolve cùng ngày bởi cùng 1 user. Dấu hiệu đóng hàng loạt mà không thực sự xử lý từng finding.',
+    sql: `
+WITH sec_status_changes AS (
+  SELECT
+    ci.issue_key, ci.to_string as new_status,
+    c.author_name, SUBSTR(c.created, 1, 10) as change_date
+  FROM changelog_items ci
+  JOIN changelogs c ON ci.changelog_id = c.id
+  WHERE ci.field = 'status'
+    AND LOWER(ci.to_string) IN ('done', 'closed', 'resolved')
+    AND ci.issue_key IN (
+      SELECT key FROM issues
+      WHERE LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%penetration%'
+         OR LOWER(summary) LIKE '%va scan%' OR LOWER(summary) LIKE '%vulnerability%'
+         OR LOWER(summary) LIKE '%finding%' OR LOWER(summary) LIKE '%security%'
+         OR LOWER(labels) LIKE '%pentest%' OR LOWER(labels) LIKE '%security%'
+    )
+)
+SELECT
+  author_name as resolved_by,
+  change_date,
+  COUNT(*) as issues_resolved,
+  GROUP_CONCAT(issue_key) as issue_keys
+FROM sec_status_changes
+GROUP BY author_name, change_date
+HAVING issues_resolved >= 3
+ORDER BY issues_resolved DESC`
+  },
+
+  'r1-04-created-after-duedate': {
+    category: 'R1 - Backdating',
+    title: '[R1] Issue tạo SAU due date của chính nó',
+    description: 'Due date sớm hơn ngày tạo issue - bất thường logic, có thể do set due date giả để khớp timeline.',
+    sql: `
+SELECT
+  key, project_key, summary,
+  SUBSTR(created, 1, 10) as created_date,
+  due_date,
+  CAST(julianday(created) - julianday(due_date) AS INTEGER) as days_after_due,
+  assignee_name, reporter_name, status_name
+FROM issues
+WHERE due_date IS NOT NULL
+  AND SUBSTR(created, 1, 10) > due_date
+  AND (LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%security%'
+    OR LOWER(summary) LIKE '%vulnerab%' OR LOWER(summary) LIKE '%finding%'
+    OR LOWER(summary) LIKE '%bảo mật%' OR LOWER(summary) LIKE '%attt%'
+    OR LOWER(labels) LIKE '%pentest%' OR LOWER(labels) LIKE '%security%')
+ORDER BY days_after_due DESC`
+  },
+
+  'r1-05-changelog-timing-analysis': {
+    category: 'R1 - Backdating',
+    title: '[R1] Timeline phân tích chi tiết - Issue pentest từ tạo đến đóng',
+    description: 'Xem toàn bộ lifecycle (tạo, comment đầu, thay đổi status, resolve) để đánh giá issue có qua quy trình thực hay chỉ tạo rồi đóng luôn.',
+    sql: `
+WITH pentest_issues AS (
+  SELECT key, summary, created, resolved, project_key, assignee_name, reporter_name FROM issues
+  WHERE LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%penetration%'
+     OR LOWER(summary) LIKE '%va scan%' OR LOWER(summary) LIKE '%finding%'
+     OR LOWER(labels) LIKE '%pentest%' OR LOWER(labels) LIKE '%va-scan%'
+),
+issue_events AS (
+  SELECT
+    pi.key,
+    pi.summary,
+    pi.reporter_name,
+    pi.assignee_name,
+    SUBSTR(pi.created, 1, 16) as created_at,
+    SUBSTR(pi.resolved, 1, 16) as resolved_at,
+    (SELECT COUNT(*) FROM comments c WHERE c.issue_key = pi.key) as comment_count,
+    (SELECT COUNT(*) FROM changelogs c WHERE c.issue_key = pi.key) as changelog_count,
+    (SELECT MIN(SUBSTR(c.created, 1, 16)) FROM comments c WHERE c.issue_key = pi.key) as first_comment,
+    (SELECT COUNT(DISTINCT c.author_key) FROM changelogs c WHERE c.issue_key = pi.key) as unique_actors,
+    CASE WHEN pi.resolved IS NOT NULL
+      THEN ROUND(julianday(pi.resolved) - julianday(pi.created), 1) ELSE NULL END as days_open
+  FROM pentest_issues pi
+)
+SELECT
+  key, SUBSTR(summary, 1, 80) as summary,
+  reporter_name, assignee_name,
+  created_at, resolved_at,
+  days_open,
+  comment_count,
+  changelog_count,
+  unique_actors,
+  first_comment,
+  CASE
+    WHEN comment_count = 0 AND changelog_count <= 2 THEN '⚠ SUSPECT: no discussion, minimal changes'
+    WHEN days_open IS NOT NULL AND days_open < 1 THEN '⚠ SUSPECT: resolved same day'
+    WHEN unique_actors <= 1 THEN '⚠ SUSPECT: single actor'
+    ELSE 'OK'
+  END as red_flag
+FROM issue_events
+ORDER BY
+  CASE WHEN comment_count = 0 AND changelog_count <= 2 THEN 0
+       WHEN days_open IS NOT NULL AND days_open < 1 THEN 1
+       WHEN unique_actors <= 1 THEN 2 ELSE 3 END,
+  created_at DESC`
+  },
+
+  // ================================================================
+  //  R2. PENTEST HÌNH THỨC - Thiếu chiều sâu
+  // ================================================================
+
+  'r2-01-finding-severity-distribution': {
+    category: 'R2 - Shallow Pentest',
+    title: '[R2] Phân bố severity findings pentest',
+    description: 'Nếu hầu hết findings là Low/Info mà không có High/Critical -> pentest có thể hình thức, chỉ quét surface. So sánh với benchmark ngành (thường 10-20% High, 30-40% Medium).',
+    sql: `
+WITH pentest_findings AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%penetration%'
+     OR LOWER(summary) LIKE '%va scan%' OR LOWER(summary) LIKE '%finding%'
+     OR LOWER(summary) LIKE '%vulnerability%'
+     OR LOWER(labels) LIKE '%pentest%' OR LOWER(labels) LIKE '%va-scan%'
+)
+SELECT
+  priority_name as severity,
+  COUNT(*) as count,
+  ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM pentest_findings), 1) as pct,
+  SUM(CASE WHEN status_category = 'Done' THEN 1 ELSE 0 END) as resolved,
+  SUM(CASE WHEN status_category != 'Done' THEN 1 ELSE 0 END) as open
+FROM pentest_findings
+GROUP BY priority_name
+ORDER BY
+  CASE LOWER(priority_name) WHEN 'blocker' THEN 1 WHEN 'critical' THEN 2 WHEN 'highest' THEN 3 WHEN 'high' THEN 4 WHEN 'medium' THEN 5 WHEN 'low' THEN 6 WHEN 'lowest' THEN 7 WHEN 'trivial' THEN 8 ELSE 9 END`
+  },
+
+  'r2-02-findings-per-system': {
+    category: 'R2 - Shallow Pentest',
+    title: '[R2] Số findings trung bình per hệ thống/project',
+    description: 'Pentest thực tế cho 1 hệ thống banking thường phát hiện 10-50 findings. Nếu chỉ 1-3 findings/hệ thống -> pentest sơ sài.',
+    sql: `
+WITH pentest_findings AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%penetration%'
+     OR LOWER(summary) LIKE '%va scan%' OR LOWER(summary) LIKE '%finding%'
+     OR LOWER(summary) LIKE '%vulnerability%'
+     OR LOWER(labels) LIKE '%pentest%' OR LOWER(labels) LIKE '%va-scan%'
+)
+SELECT
+  project_key,
+  COUNT(*) as total_findings,
+  SUM(CASE WHEN LOWER(priority_name) IN ('blocker','critical','highest','high') THEN 1 ELSE 0 END) as high_critical,
+  SUM(CASE WHEN LOWER(priority_name) = 'medium' THEN 1 ELSE 0 END) as medium,
+  SUM(CASE WHEN LOWER(priority_name) IN ('low','lowest','trivial') THEN 1 ELSE 0 END) as low,
+  SUM(CASE WHEN status_category = 'Done' THEN 1 ELSE 0 END) as resolved,
+  SUM(CASE WHEN status_category != 'Done' THEN 1 ELSE 0 END) as open,
+  CASE WHEN COUNT(*) <= 3 THEN '⚠ SUSPICIOUSLY LOW' ELSE 'OK' END as assessment
+FROM pentest_findings
+GROUP BY project_key
+ORDER BY total_findings ASC`
+  },
+
+  'r2-03-pentest-no-findings': {
+    category: 'R2 - Shallow Pentest',
+    title: '[R2] Issues pentest không có sub-task/finding liên kết',
+    description: 'Issue pentest (task gốc) mà không link đến finding nào, không có subtask, không có comment thảo luận -> hình thức.',
+    sql: `
+WITH pentest_tasks AS (
+  SELECT i.key, i.summary, i.project_key, i.status_name, i.assignee_name, i.created, i.resolved
+  FROM issues i
+  WHERE (LOWER(i.summary) LIKE '%pentest%' OR LOWER(i.summary) LIKE '%penetration%'
+      OR LOWER(i.summary) LIKE '%va scan%' OR LOWER(i.summary) LIKE '%security assessment%'
+      OR LOWER(i.summary) LIKE '%đánh giá%bảo mật%')
+    AND LOWER(i.issue_type_name) NOT LIKE '%sub%'
+)
+SELECT
+  pt.key, pt.project_key,
+  SUBSTR(pt.summary, 1, 80) as summary,
+  pt.status_name, pt.assignee_name,
+  SUBSTR(pt.created, 1, 10) as created,
+  SUBSTR(pt.resolved, 1, 10) as resolved,
+  (SELECT COUNT(*) FROM issues sub WHERE sub.parent_key = pt.key) as subtask_count,
+  (SELECT COUNT(*) FROM issue_links il WHERE il.issue_key = pt.key) as linked_issues,
+  (SELECT COUNT(*) FROM comments c WHERE c.issue_key = pt.key) as comments,
+  (SELECT COUNT(*) FROM attachments a WHERE a.issue_key = pt.key) as attachments,
+  CASE
+    WHEN (SELECT COUNT(*) FROM issues sub WHERE sub.parent_key = pt.key) = 0
+     AND (SELECT COUNT(*) FROM issue_links il WHERE il.issue_key = pt.key) = 0
+     AND (SELECT COUNT(*) FROM comments c WHERE c.issue_key = pt.key) = 0
+     AND (SELECT COUNT(*) FROM attachments a WHERE a.issue_key = pt.key) = 0
+    THEN '⚠ EMPTY SHELL - no findings, no comments, no attachments'
+    WHEN (SELECT COUNT(*) FROM comments c WHERE c.issue_key = pt.key) = 0
+    THEN '⚠ No discussion'
+    ELSE 'Has activity'
+  END as red_flag
+FROM pentest_tasks pt
+ORDER BY subtask_count ASC, linked_issues ASC, comments ASC`
+  },
+
+  // ================================================================
+  //  R3. PHẠM VI PENTEST - Bao phủ hệ thống
+  // ================================================================
+
+  'r3-01-new-systems-no-pentest': {
+    category: 'R3 - Coverage Gap',
+    title: '[R3] Hệ thống mới (tạo project gần đây) chưa có pentest trước go-live',
+    description: 'Project mới được tạo trên Jira (< 12 tháng) nhưng không có issue pentest nào. Vi phạm quy định đánh giá ATTT trước khi đưa vào vận hành.',
+    sql: `
+WITH recent_projects AS (
+  SELECT p.key, p.name,
+    MIN(SUBSTR(i.created, 1, 10)) as first_issue_date,
+    COUNT(i.id) as total_issues
+  FROM projects p
+  JOIN issues i ON p.key = i.project_key
+  GROUP BY p.key
+  HAVING MIN(i.created) >= date('now', '-12 months')
+),
+pentest_issues AS (
+  SELECT DISTINCT project_key FROM issues
+  WHERE LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%penetration%'
+     OR LOWER(summary) LIKE '%va scan%' OR LOWER(summary) LIKE '%security assessment%'
+     OR LOWER(summary) LIKE '%security test%'
+     OR LOWER(labels) LIKE '%pentest%'
+)
+SELECT
+  rp.key as project_key,
+  rp.name as project_name,
+  rp.first_issue_date,
+  rp.total_issues,
+  CASE
+    WHEN pi.project_key IS NOT NULL THEN 'HAS pentest issues'
+    ELSE '⚠ NO PENTEST FOUND for new project'
+  END as pentest_status
+FROM recent_projects rp
+LEFT JOIN pentest_issues pi ON rp.key = pi.project_key
+ORDER BY pi.project_key IS NOT NULL ASC, rp.first_issue_date ASC`
+  },
+
+  'r3-02-system-coverage-matrix': {
+    category: 'R3 - Coverage Gap',
+    title: '[R3] Ma trận bao phủ: pentest + hardening + security per project',
+    description: 'Tổng hợp mỗi project có bao nhiêu issue pentest, hardening, security. Project nào = 0 cả 3 là gap lớn nhất.',
+    sql: `
+SELECT
+  p.key, p.name,
+  COUNT(DISTINCT CASE WHEN LOWER(i.summary) LIKE '%pentest%' OR LOWER(i.summary) LIKE '%penetration%' OR LOWER(i.summary) LIKE '%va scan%' OR LOWER(i.labels) LIKE '%pentest%' THEN i.key END) as pentest_issues,
+  COUNT(DISTINCT CASE WHEN LOWER(i.summary) LIKE '%hardening%' OR LOWER(i.summary) LIKE '%baseline%' OR LOWER(i.summary) LIKE '%security config%' OR LOWER(i.labels) LIKE '%hardening%' THEN i.key END) as hardening_issues,
+  COUNT(DISTINCT CASE WHEN LOWER(i.summary) LIKE '%vulnerab%' OR LOWER(i.summary) LIKE '%cve-%' OR LOWER(i.summary) LIKE '%security%fix%' OR LOWER(i.summary) LIKE '%patch%' THEN i.key END) as vuln_fix_issues,
+  COUNT(i.id) as total_issues,
+  CASE
+    WHEN COUNT(DISTINCT CASE WHEN LOWER(i.summary) LIKE '%pentest%' OR LOWER(i.summary) LIKE '%penetration%' OR LOWER(i.summary) LIKE '%va scan%' OR LOWER(i.labels) LIKE '%pentest%' THEN i.key END) = 0
+     AND COUNT(DISTINCT CASE WHEN LOWER(i.summary) LIKE '%hardening%' OR LOWER(i.summary) LIKE '%baseline%' OR LOWER(i.labels) LIKE '%hardening%' THEN i.key END) = 0
+    THEN '⚠ NO SECURITY ACTIVITY'
+    WHEN COUNT(DISTINCT CASE WHEN LOWER(i.summary) LIKE '%pentest%' OR LOWER(i.summary) LIKE '%penetration%' OR LOWER(i.labels) LIKE '%pentest%' THEN i.key END) = 0
+    THEN '⚠ No pentest'
+    ELSE 'Has activity'
+  END as gap_status
+FROM projects p
+LEFT JOIN issues i ON p.key = i.project_key
+GROUP BY p.key
+ORDER BY pentest_issues ASC, hardening_issues ASC`
+  },
+
+  // ================================================================
+  //  R4. KHÔNG CÓ BẰNG CHỨNG KHẮC PHỤC SAU PENTEST
+  // ================================================================
+
+  'r4-01-findings-no-remediation': {
+    category: 'R4 - No Remediation',
+    title: '[R4] Findings pentest không có hoạt động khắc phục',
+    description: 'Issue finding từ pentest mà không có comment, không có changelog (ngoài tạo), không có worklog -> chưa ai xử lý thực tế.',
+    sql: `
+WITH pentest_findings AS (
+  SELECT i.key, i.summary, i.project_key, i.priority_name, i.status_name,
+    i.status_category, i.assignee_name, i.created, i.resolved
+  FROM issues i
+  WHERE LOWER(i.summary) LIKE '%pentest%' OR LOWER(i.summary) LIKE '%penetration%'
+     OR LOWER(i.summary) LIKE '%va scan%' OR LOWER(i.summary) LIKE '%finding%'
+     OR LOWER(i.summary) LIKE '%vulnerability%'
+     OR LOWER(i.labels) LIKE '%pentest%' OR LOWER(i.labels) LIKE '%va-scan%'
+)
+SELECT
+  pf.key, pf.project_key,
+  SUBSTR(pf.summary, 1, 80) as summary,
+  pf.priority_name, pf.status_name, pf.assignee_name,
+  SUBSTR(pf.created, 1, 10) as created,
+  (SELECT COUNT(*) FROM comments c WHERE c.issue_key = pf.key) as comments,
+  (SELECT COUNT(*) FROM changelogs c WHERE c.issue_key = pf.key) as changes,
+  (SELECT COUNT(*) FROM worklogs w WHERE w.issue_key = pf.key) as worklogs,
+  CASE
+    WHEN pf.status_category = 'Done'
+     AND (SELECT COUNT(*) FROM comments c WHERE c.issue_key = pf.key) = 0
+     AND (SELECT COUNT(*) FROM worklogs w WHERE w.issue_key = pf.key) = 0
+    THEN '⚠ CLOSED WITHOUT EVIDENCE of work'
+    WHEN pf.status_category != 'Done'
+     AND (SELECT COUNT(*) FROM changelogs c WHERE c.issue_key = pf.key) <= 1
+    THEN '⚠ OPEN but no activity'
+    ELSE 'Has activity'
+  END as red_flag
+FROM pentest_findings pf
+ORDER BY
+  CASE
+    WHEN pf.status_category = 'Done' AND (SELECT COUNT(*) FROM comments c WHERE c.issue_key = pf.key) = 0 THEN 0
+    WHEN pf.status_category != 'Done' AND (SELECT COUNT(*) FROM changelogs c WHERE c.issue_key = pf.key) <= 1 THEN 1
+    ELSE 2
+  END,
+  pf.created`
+  },
+
+  'r4-02-resolved-no-comment': {
+    category: 'R4 - No Remediation',
+    title: '[R4] Issues ATTT đã đóng nhưng KHÔNG CÓ comment nào',
+    description: 'Issue security resolved mà 0 comments. Không có thảo luận = không có bằng chứng ai đã review, phân tích, xử lý.',
+    sql: `
+SELECT
+  i.key, i.project_key,
+  SUBSTR(i.summary, 1, 80) as summary,
+  i.priority_name, i.status_name,
+  i.assignee_name, i.reporter_name,
+  SUBSTR(i.created, 1, 10) as created,
+  SUBSTR(i.resolved, 1, 10) as resolved,
+  CAST(julianday(i.resolved) - julianday(i.created) AS INTEGER) as days_to_resolve,
+  (SELECT COUNT(*) FROM changelogs c WHERE c.issue_key = i.key) as changelog_entries,
+  '⚠ ZERO COMMENTS' as red_flag
+FROM issues i
+LEFT JOIN comments c ON i.key = c.issue_key
+WHERE i.status_category = 'Done'
+  AND c.id IS NULL
+  AND (LOWER(i.summary) LIKE '%pentest%' OR LOWER(i.summary) LIKE '%penetration%'
+    OR LOWER(i.summary) LIKE '%vulnerab%' OR LOWER(i.summary) LIKE '%finding%'
+    OR LOWER(i.summary) LIKE '%security%' OR LOWER(i.summary) LIKE '%bảo mật%'
+    OR LOWER(i.labels) LIKE '%pentest%' OR LOWER(i.labels) LIKE '%security%')
+ORDER BY days_to_resolve ASC`
+  },
+
+  // ================================================================
+  //  R5. KHOẢNG TRỐNG HỢP ĐỒNG / TIMELINE
+  // ================================================================
+
+  'r5-01-pentest-timeline-gaps': {
+    category: 'R5 - Timeline Gaps',
+    title: '[R5] Timeline pentest - phát hiện khoảng trống',
+    description: 'Xem hoạt động pentest theo tháng. Khoảng trống > 3 tháng không có issue pentest nào = potential gap trong hợp đồng hoặc thực hiện.',
+    sql: `
+WITH months AS (
+  SELECT DISTINCT SUBSTR(created, 1, 7) as month
+  FROM issues
+  WHERE created >= date('now', '-3 years')
+),
+pentest_by_month AS (
+  SELECT SUBSTR(created, 1, 7) as month, COUNT(*) as cnt
+  FROM issues
+  WHERE LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%penetration%'
+     OR LOWER(summary) LIKE '%va scan%' OR LOWER(summary) LIKE '%security assessment%'
+     OR LOWER(summary) LIKE '%security test%'
+     OR LOWER(labels) LIKE '%pentest%' OR LOWER(labels) LIKE '%va-scan%'
+  GROUP BY SUBSTR(created, 1, 7)
+)
+SELECT
+  m.month,
+  COALESCE(p.cnt, 0) as pentest_issues,
+  CASE WHEN COALESCE(p.cnt, 0) = 0 THEN '⚠ NO PENTEST ACTIVITY' ELSE '' END as flag
+FROM months m
+LEFT JOIN pentest_by_month p ON m.month = p.month
+ORDER BY m.month DESC`
+  },
+
+  // ================================================================
+  //  R7. CÙNG NHÀ THẦU LIÊN TỤC
+  // ================================================================
+
+  'r7-01-pentest-reporter-pattern': {
+    category: 'R7 - Vendor Pattern',
+    title: '[R7] Ai report issues pentest? (nhận dạng nhà thầu)',
+    description: 'Nếu cùng 1-2 account report tất cả pentest findings qua nhiều năm -> cùng nhà thầu. Đối chiếu với thông tin hợp đồng.',
+    sql: `
+WITH pentest_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%penetration%'
+     OR LOWER(summary) LIKE '%va scan%' OR LOWER(summary) LIKE '%vulnerability%'
+     OR LOWER(summary) LIKE '%finding%'
+     OR LOWER(labels) LIKE '%pentest%' OR LOWER(labels) LIKE '%va-scan%'
+)
+SELECT
+  reporter_name,
+  reporter_key,
+  COUNT(*) as total_reported,
+  COUNT(DISTINCT project_key) as projects,
+  MIN(SUBSTR(created, 1, 7)) as first_report_month,
+  MAX(SUBSTR(created, 1, 7)) as last_report_month,
+  COUNT(DISTINCT SUBSTR(created, 1, 4)) as active_years,
+  GROUP_CONCAT(DISTINCT SUBSTR(created, 1, 4)) as years
+FROM pentest_issues
+GROUP BY reporter_key
+ORDER BY total_reported DESC`
+  },
+
+  'r7-02-pentest-assignee-pattern': {
+    category: 'R7 - Vendor Pattern',
+    title: '[R7] Ai xử lý findings? Assignee pattern theo năm',
+    description: 'Nếu cùng người xử lý findings qua nhiều năm -> cùng team/vendor. Đánh giá tính độc lập.',
+    sql: `
+WITH pentest_issues AS (
+  SELECT * FROM issues
+  WHERE LOWER(summary) LIKE '%pentest%' OR LOWER(summary) LIKE '%penetration%'
+     OR LOWER(summary) LIKE '%va scan%' OR LOWER(summary) LIKE '%vulnerability%'
+     OR LOWER(summary) LIKE '%finding%'
+     OR LOWER(labels) LIKE '%pentest%' OR LOWER(labels) LIKE '%va-scan%'
+)
+SELECT
+  assignee_name,
+  SUBSTR(created, 1, 4) as year,
+  COUNT(*) as issues_assigned,
+  SUM(CASE WHEN status_category = 'Done' THEN 1 ELSE 0 END) as resolved,
+  SUM(CASE WHEN status_category != 'Done' THEN 1 ELSE 0 END) as open
+FROM pentest_issues
+WHERE assignee_name IS NOT NULL
+GROUP BY assignee_name, SUBSTR(created, 1, 4)
+ORDER BY assignee_name, year`
+  },
+
+  // ================================================================
+  //  R8/R9. THIẾU TIÊU CHUẨN CẤU HÌNH ỨNG DỤNG
+  // ================================================================
+
+  'r8-01-asymmetry-os-db-vs-app': {
+    category: 'R8 - No App Baseline',
+    title: '[R8] Bất đối xứng: OS/DB audit có, App audit không',
+    description: 'So sánh số issue audit/hardening cho OS, Database, và Application. Nếu OS+DB có nhiều nhưng App = 0 -> bằng chứng thiếu tiêu chuẩn app.',
+    sql: `
+SELECT
+  CASE
+    WHEN LOWER(summary) LIKE '%os%' OR LOWER(summary) LIKE '%operating system%'
+      OR LOWER(summary) LIKE '%windows%server%' OR LOWER(summary) LIKE '%linux%'
+      OR LOWER(summary) LIKE '%redhat%' OR LOWER(summary) LIKE '%centos%'
+      OR LOWER(summary) LIKE '%ubuntu%' THEN 'OS / Operating System'
+    WHEN LOWER(summary) LIKE '%database%' OR LOWER(summary) LIKE '%oracle%db%'
+      OR LOWER(summary) LIKE '%sql server%' OR LOWER(summary) LIKE '%mysql%'
+      OR LOWER(summary) LIKE '%postgresql%' OR LOWER(summary) LIKE '%csdl%'
+      OR LOWER(summary) LIKE '%cơ sở dữ liệu%' THEN 'Database'
+    WHEN LOWER(summary) LIKE '%web app%' OR LOWER(summary) LIKE '%mobile app%'
+      OR LOWER(summary) LIKE '%api%' OR LOWER(summary) LIKE '%ứng dụng%'
+      OR LOWER(summary) LIKE '%application%' THEN 'Application'
+    ELSE 'Other/General'
+  END as layer,
+  COUNT(*) as total_issues,
+  SUM(CASE WHEN status_category = 'Done' THEN 1 ELSE 0 END) as resolved,
+  SUM(CASE WHEN status_category != 'Done' THEN 1 ELSE 0 END) as open
+FROM issues
+WHERE LOWER(summary) LIKE '%hardening%' OR LOWER(summary) LIKE '%baseline%'
+   OR LOWER(summary) LIKE '%audit config%' OR LOWER(summary) LIKE '%security config%'
+   OR LOWER(summary) LIKE '%cis benchmark%' OR LOWER(summary) LIKE '%stig%'
+   OR LOWER(summary) LIKE '%cấu hình%' OR LOWER(summary) LIKE '%tiêu chuẩn%'
+   OR LOWER(labels) LIKE '%hardening%' OR LOWER(labels) LIKE '%baseline%'
+   OR LOWER(labels) LIKE '%audit%config%'
+GROUP BY layer
+ORDER BY total_issues DESC`
+  },
+
+  'r8-02-app-security-config-search': {
+    category: 'R8 - No App Baseline',
+    title: '[R8] Tìm BẤT KỲ bằng chứng nào về tiêu chuẩn cấu hình ứng dụng',
+    description: 'Tìm rộng nhất có thể: bất kỳ issue nào đề cập đến app config standard, secure coding, OWASP config, web hardening guide... Nếu 0 kết quả = finding chắc chắn.',
+    sql: `
+SELECT
+  key, project_key, issue_type_name, summary,
+  priority_name, status_name,
+  assignee_name, reporter_name,
+  SUBSTR(created, 1, 10) as created,
+  labels
+FROM issues
+WHERE LOWER(summary) LIKE '%tiêu chuẩn cấu hình%ứng dụng%'
+   OR LOWER(summary) LIKE '%tieu chuan cau hinh%ung dung%'
+   OR LOWER(summary) LIKE '%application%baseline%'
+   OR LOWER(summary) LIKE '%application%hardening%'
+   OR LOWER(summary) LIKE '%app%hardening%'
+   OR LOWER(summary) LIKE '%web%hardening%'
+   OR LOWER(summary) LIKE '%mobile%hardening%'
+   OR LOWER(summary) LIKE '%api%hardening%'
+   OR LOWER(summary) LIKE '%secure coding%standard%'
+   OR LOWER(summary) LIKE '%owasp%config%'
+   OR LOWER(summary) LIKE '%owasp%standard%'
+   OR LOWER(summary) LIKE '%application security%standard%'
+   OR LOWER(summary) LIKE '%deployment%checklist%security%'
+   OR LOWER(summary) LIKE '%go-live%security%'
+   OR LOWER(summary) LIKE '%security%checklist%deploy%'
+   OR LOWER(summary) LIKE '%security%requirement%'
+   OR LOWER(summary) LIKE '%yêu cầu bảo mật%ứng dụng%'
+   OR LOWER(summary) LIKE '%quy định%cấu hình%'
+   OR LOWER(summary) LIKE '%chính sách%cấu hình%'
+ORDER BY created DESC`
+  },
+
+  // ================================================================
+  //  R10/R11. TIÊU CHUẨN LỖI THỜI / KHÔNG CÓ OWNER
+  // ================================================================
+
+  'r10-01-stale-config-issues': {
+    category: 'R10 - Stale Standards',
+    title: '[R10] Issues hardening/config không cập nhật > 12 tháng',
+    description: 'Issue liên quan tiêu chuẩn cấu hình tồn tại nhưng không ai cập nhật > 12 tháng. Tiêu chuẩn lỗi thời = vô nghĩa.',
+    sql: `
+SELECT
+  key, project_key, summary,
+  status_name, assignee_name,
+  SUBSTR(created, 1, 10) as created,
+  SUBSTR(updated, 1, 10) as last_updated,
+  CAST(julianday('now') - julianday(updated) AS INTEGER) as days_since_update,
+  '⚠ STALE > 12 months' as flag
+FROM issues
+WHERE (LOWER(summary) LIKE '%hardening%' OR LOWER(summary) LIKE '%baseline%'
+    OR LOWER(summary) LIKE '%security config%' OR LOWER(summary) LIKE '%security standard%'
+    OR LOWER(summary) LIKE '%tiêu chuẩn%' OR LOWER(summary) LIKE '%cấu hình bảo mật%'
+    OR LOWER(labels) LIKE '%hardening%' OR LOWER(labels) LIKE '%baseline%')
+  AND julianday('now') - julianday(updated) > 365
+ORDER BY days_since_update DESC`
+  },
 };
 
 module.exports = { AUDIT_QUERIES };

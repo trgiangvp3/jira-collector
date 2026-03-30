@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(fuser -k 3000/tcp)"
+      "Bash(fuser -k 3000/tcp)",
+      "Bash(node -e \":*)"
     ]
   }
 }
