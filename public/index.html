@@ -4,6 +4,47 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Jira Collector - Security Audit</title>
+  <!-- CodeMirror 6 via CDN -->
+  <script type="module">
+    import {EditorView, basicSetup} from 'https://esm.sh/codemirror@6.0.1';
+    import {sql, SQLite} from 'https://esm.sh/@codemirror/lang-sql@6.8.0';
+    import {oneDark} from 'https://esm.sh/@codemirror/theme-one-dark@6.1.2';
+    import {keymap} from 'https://esm.sh/@codemirror/view@6.36.8';
+
+    function createEditor(parentId, initialDoc, onCtrlEnter) {
+      const parent = document.getElementById(parentId);
+      if (!parent) return null;
+      const ctrlEnterKeymap = keymap.of([{
+        key: 'Ctrl-Enter',
+        run: () => { onCtrlEnter(); return true; },
+      }]);
+      const view = new EditorView({
+        doc: initialDoc,
+        extensions: [
+          basicSetup,
+          sql({ dialect: SQLite }),
+          oneDark,
+          ctrlEnterKeymap,
+          EditorView.theme({
+            '&': { fontSize: '13px', maxHeight: '300px' },
+            '.cm-scroller': { overflow: 'auto' },
+            '.cm-content': { fontFamily: "'Cascadia Code','Fira Code','Consolas',monospace" },
+            '.cm-gutters': { backgroundColor: '#0a0c10', borderRight: '1px solid #2e3244' },
+            '&.cm-focused': { outline: '1px solid #6c8cff' },
+          }),
+        ],
+        parent,
+      });
+      return view;
+    }
+
+    // Expose to global scope
+    window._createEditor = createEditor;
+    window._cmReady = true;
+    // Init editors once DOM is ready
+    if (document.readyState === 'complete') window._initEditors?.();
+    else window.addEventListener('load', () => window._initEditors?.());
+  </script>
   <style>
     :root {
       --bg: #0f1117;
@@ -30,125 +71,49 @@
     /* ── Layout ── */
     .app { display: flex; height: 100vh; }
     .sidebar {
-      width: 220px;
-      background: var(--surface);
-      border-right: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      flex-shrink: 0;
+      width: 220px; background: var(--surface); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; flex-shrink: 0;
     }
-    .sidebar-header {
-      padding: 20px 16px;
-      border-bottom: 1px solid var(--border);
-    }
-    .sidebar-header h1 {
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--accent);
-    }
-    .sidebar-header p {
-      font-size: 11px;
-      color: var(--text2);
-      margin-top: 4px;
-    }
+    .sidebar-header { padding: 20px 16px; border-bottom: 1px solid var(--border); }
+    .sidebar-header h1 { font-size: 16px; font-weight: 700; color: var(--accent); }
+    .sidebar-header p { font-size: 11px; color: var(--text2); margin-top: 4px; }
     .nav { flex: 1; padding: 8px; }
     .nav-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
-      border-radius: var(--radius);
-      cursor: pointer;
-      color: var(--text2);
-      font-size: 13px;
-      font-weight: 500;
-      transition: all 0.15s;
-      user-select: none;
+      display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+      border-radius: var(--radius); cursor: pointer; color: var(--text2);
+      font-size: 13px; font-weight: 500; transition: all 0.15s; user-select: none;
     }
     .nav-item:hover { background: var(--surface2); color: var(--text); }
     .nav-item.active { background: var(--accent); color: #fff; }
     .nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
-    .nav-separator {
-      margin: 8px 12px;
-      border-top: 1px solid var(--border);
-    }
-
+    .nav-separator { margin: 8px 12px; border-top: 1px solid var(--border); }
     .main { flex: 1; overflow-y: auto; padding: 24px 32px; }
     .page { display: none; }
     .page.active { display: block; }
-    .page-title {
-      font-size: 22px;
-      font-weight: 700;
-      margin-bottom: 20px;
-    }
-
-    /* ── Connection status ── */
-    .conn-badge {
-      margin: 8px;
-      padding: 8px 12px;
-      border-radius: var(--radius);
-      font-size: 11px;
-      text-align: center;
-    }
+    .page-title { font-size: 22px; font-weight: 700; margin-bottom: 20px; }
+    .conn-badge { margin: 8px; padding: 8px 12px; border-radius: var(--radius); font-size: 11px; text-align: center; }
     .conn-badge.ok { background: #0d3320; color: var(--green); }
     .conn-badge.err { background: #3b1111; color: var(--red); }
     .conn-badge.unknown { background: var(--surface2); color: var(--text2); }
 
     /* ── Cards & Forms ── */
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 20px;
-      margin-bottom: 16px;
-    }
-    .card-title {
-      font-size: 14px;
-      font-weight: 600;
-      margin-bottom: 12px;
-      color: var(--text2);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+    .card-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
     .form-group { margin-bottom: 14px; }
-    .form-group label {
-      display: block;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text2);
-      margin-bottom: 4px;
-    }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 4px; }
     .form-group input, .form-group textarea, .form-group select {
-      width: 100%;
-      padding: 8px 12px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
-      font-size: 13px;
-      font-family: inherit;
-      outline: none;
-      transition: border-color 0.15s;
+      width: 100%; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); font-size: 13px; font-family: inherit; outline: none;
     }
-    .form-group input:focus, .form-group textarea:focus {
-      border-color: var(--accent);
-    }
+    .form-group input:focus, .form-group textarea:focus { border-color: var(--accent); }
     .form-row { display: flex; gap: 12px; }
     .form-row .form-group { flex: 1; }
     .form-hint { font-size: 11px; color: var(--text2); margin-top: 3px; }
 
     /* ── Buttons ── */
     .btn {
-      padding: 8px 16px;
-      border: none;
-      border-radius: 6px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.15s;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
+      padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px;
     }
     .btn-primary { background: var(--accent); color: #fff; }
     .btn-primary:hover { background: var(--accent2); }
@@ -156,44 +121,22 @@
     .btn-success:hover { background: #047857; }
     .btn-danger { background: #dc2626; color: #fff; }
     .btn-danger:hover { background: #b91c1c; }
-    .btn-outline {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--text);
-    }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
     .btn-outline:hover { background: var(--surface2); }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-group { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 
     /* ── Stats Grid ── */
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      gap: 12px;
-      margin-bottom: 20px;
-    }
-    .stat-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 16px;
-      text-align: center;
-    }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; text-align: center; }
     .stat-value { font-size: 28px; font-weight: 700; color: var(--accent); }
     .stat-label { font-size: 12px; color: var(--text2); margin-top: 4px; }
 
     /* ── Log Console ── */
     .log-console {
-      background: #0a0c10;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 12px;
-      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-      font-size: 12px;
-      line-height: 1.6;
-      max-height: 420px;
-      overflow-y: auto;
-      color: #9ca3af;
+      background: #0a0c10; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px;
+      font-family: 'Cascadia Code','Fira Code','Consolas',monospace; font-size: 12px; line-height: 1.6;
+      max-height: 420px; overflow-y: auto; color: #9ca3af;
     }
     .log-console .log-line { white-space: pre-wrap; word-break: break-all; }
     .log-console .log-time { color: #4b5563; margin-right: 8px; }
@@ -202,102 +145,44 @@
     .log-console .log-success { color: var(--green); }
 
     /* ── Phase Progress ── */
-    .phases {
-      display: flex;
-      gap: 4px;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
-    }
-    .phase-badge {
-      padding: 6px 12px;
-      border-radius: 20px;
-      font-size: 11px;
-      font-weight: 600;
-      background: var(--surface2);
-      color: var(--text2);
-    }
+    .phases { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
+    .phase-badge { padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; background: var(--surface2); color: var(--text2); }
     .phase-badge.active { background: var(--accent); color: #fff; animation: pulse 1.5s infinite; }
     .phase-badge.done { background: #065f46; color: var(--green); }
     .phase-badge.error { background: #7f1d1d; color: var(--red); }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
 
-    /* ── Query ── */
-    .query-list {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 10px;
-      margin-bottom: 20px;
-    }
+    /* ── Query Cards ── */
+    .query-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; margin-bottom: 20px; }
     .query-item {
-      padding: 12px 16px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      cursor: pointer;
-      transition: all 0.15s;
-      font-size: 13px;
+      padding: 12px 16px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); cursor: pointer; transition: all 0.15s; font-size: 13px;
     }
     .query-item:hover { border-color: var(--accent); background: var(--surface2); }
     .query-item.active { border-color: var(--accent); background: rgba(108,140,255,0.1); }
     .query-item .q-key { font-weight: 600; color: var(--accent); font-size: 12px; }
     .query-item .q-title { color: var(--text); margin-top: 2px; }
 
-    .sql-editor {
-      width: 100%;
-      min-height: 100px;
-      padding: 12px;
-      background: #0a0c10;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      color: var(--green);
-      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-      font-size: 13px;
-      line-height: 1.5;
-      resize: vertical;
-      outline: none;
-    }
-    .sql-editor:focus { border-color: var(--accent); }
-
     /* ── Data Table ── */
-    .table-wrapper {
-      overflow-x: auto;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      margin-top: 12px;
-    }
-    .data-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 12px;
-    }
+    .table-wrapper { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); margin-top: 12px; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
     .data-table th {
-      background: var(--surface2);
-      padding: 10px 12px;
-      text-align: left;
-      font-weight: 600;
-      color: var(--text2);
-      border-bottom: 1px solid var(--border);
-      white-space: nowrap;
-      position: sticky;
-      top: 0;
+      background: var(--surface2); padding: 10px 12px; text-align: left; font-weight: 600;
+      color: var(--text2); border-bottom: 1px solid var(--border); white-space: nowrap;
+      position: sticky; top: 0; cursor: pointer; user-select: none;
     }
-    .data-table td {
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--border);
-      max-width: 400px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .data-table tr:hover td { background: var(--surface2); }
-    .data-table a:hover { text-decoration: underline !important; }
-    .data-table th { cursor: pointer; user-select: none; position: relative; }
     .data-table th:hover { background: var(--border); }
     .data-table th .sort-arrow { margin-left: 4px; font-size: 10px; opacity: 0.4; }
     .data-table th.sort-asc .sort-arrow, .data-table th.sort-desc .sort-arrow { opacity: 1; color: var(--accent); }
-    .table-filter-bar {
-      display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;
+    .data-table td {
+      padding: 8px 12px; border-bottom: 1px solid var(--border);
+      max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
+    .data-table tr:hover td { background: var(--surface2); }
+    .data-table a:hover { text-decoration: underline !important; }
+    .data-table .null { color: var(--text2); font-style: italic; }
+    tr.filter-hidden { display: none; }
+    .table-filter-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
     .table-filter-bar input {
       flex: 1; min-width: 200px; padding: 7px 12px; background: var(--bg); border: 1px solid var(--border);
       border-radius: 6px; color: var(--text); font-size: 12px; outline: none;
@@ -309,97 +194,53 @@
       border-radius: 4px; color: var(--text2); cursor: pointer;
     }
     .table-filter-bar .filter-clear:hover { border-color: var(--accent); color: var(--text); }
-    tr.filter-hidden { display: none; }
-    .data-table .null { color: var(--text2); font-style: italic; }
-
-    .result-bar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 0;
-      font-size: 12px;
-      color: var(--text2);
-    }
+    .result-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; font-size: 12px; color: var(--text2); }
 
     /* ── Schema ── */
     .schema-block {
-      background: #0a0c10;
-      padding: 12px;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      margin-bottom: 10px;
-      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-      font-size: 12px;
-      line-height: 1.5;
-      overflow-x: auto;
-      white-space: pre-wrap;
-      color: #9ca3af;
+      background: #0a0c10; padding: 12px; border-radius: var(--radius); border: 1px solid var(--border);
+      margin-bottom: 10px; font-family: 'Cascadia Code','Fira Code','Consolas',monospace;
+      font-size: 12px; line-height: 1.5; overflow-x: auto; white-space: pre-wrap; color: #9ca3af;
     }
     .schema-block .kw { color: var(--accent); }
     .schema-block .tbl { color: var(--green); font-weight: 600; }
 
     /* ── Toast ── */
     .toast {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      padding: 12px 20px;
-      border-radius: var(--radius);
-      font-size: 13px;
-      font-weight: 500;
-      z-index: 9999;
-      animation: slideIn 0.3s;
+      position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: var(--radius);
+      font-size: 13px; font-weight: 500; z-index: 9999; animation: slideIn 0.3s;
     }
     .toast.success { background: #065f46; color: var(--green); }
     .toast.error { background: #7f1d1d; color: var(--red); }
     @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } }
 
-    /* ── Tab Group ── */
-    .tab-group { display: flex; gap: 2px; margin-bottom: 16px; }
-    .tab {
-      padding: 8px 16px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 6px 6px 0 0;
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text2);
+    /* ── Loading Spinner ── */
+    .loading-indicator {
+      display: flex; align-items: center; gap: 10px; padding: 20px;
+      color: var(--text2); font-size: 13px;
     }
-    .tab.active { background: var(--surface2); color: var(--accent); border-bottom-color: var(--surface2); }
+    .spinner {
+      width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Audit Query Cards ── */
+    /* ── Audit Cards (simplified - no checkbox) ── */
     .audit-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 14px 16px;
-      cursor: pointer;
-      transition: all 0.15s;
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 14px 16px; cursor: pointer; transition: all 0.15s;
+      display: flex; align-items: flex-start; gap: 12px;
     }
     .audit-card:hover { border-color: var(--accent); background: var(--surface2); }
     .audit-card.active { border-color: var(--accent); background: rgba(108,140,255,0.08); }
-    .audit-card .audit-check {
-      width: 18px; height: 18px; border: 2px solid var(--border); border-radius: 4px;
-      flex-shrink: 0; margin-top: 2px; display: flex; align-items: center; justify-content: center;
-      font-size: 12px; color: transparent; transition: all 0.15s;
-    }
-    .audit-card.selected .audit-check {
-      background: var(--accent); border-color: var(--accent); color: #fff;
-    }
+    .audit-card.loading { opacity: 0.6; pointer-events: none; }
     .audit-card .audit-body { flex: 1; min-width: 0; }
     .audit-card .audit-key { font-size: 11px; color: var(--accent); font-weight: 600; }
     .audit-card .audit-title { font-size: 13px; font-weight: 600; margin: 2px 0; }
     .audit-card .audit-desc { font-size: 12px; color: var(--text2); line-height: 1.4; }
     .audit-card .audit-cat {
       font-size: 10px; background: var(--surface2); color: var(--text2);
-      padding: 2px 8px; border-radius: 10px; white-space: nowrap;
-    }
-    .audit-card .audit-right {
-      display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0;
+      padding: 2px 8px; border-radius: 10px; white-space: nowrap; flex-shrink: 0;
     }
     .cat-filter {
       padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500;
@@ -411,6 +252,10 @@
     .audit-result-header {
       display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
     }
+
+    /* ── CodeMirror container ── */
+    .cm-container { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 8px; }
+    .cm-container .cm-editor { background: #0a0c10; }
   </style>
 </head>
 <body>
@@ -485,14 +330,8 @@
           </div>
           <div style="text-align:center; color:var(--text2); font-size:12px; margin: 8px 0;">- or -</div>
           <div class="form-row">
-            <div class="form-group">
-              <label>Username</label>
-              <input type="text" id="set-user" placeholder="jira_username">
-            </div>
-            <div class="form-group">
-              <label>Password</label>
-              <input type="password" id="set-pass" placeholder="password">
-            </div>
+            <div class="form-group"><label>Username</label><input type="text" id="set-user" placeholder="jira_username"></div>
+            <div class="form-group"><label>Password</label><input type="password" id="set-pass" placeholder="password"></div>
           </div>
         </div>
         <div class="card">
@@ -503,14 +342,8 @@
             <div class="form-hint">Leave empty to collect all projects you have access to</div>
           </div>
           <div class="form-row">
-            <div class="form-group">
-              <label>Page Size</label>
-              <input type="number" id="set-pagesize" value="100" min="10" max="1000">
-            </div>
-            <div class="form-group">
-              <label>DB Path (optional)</label>
-              <input type="text" id="set-dbpath" placeholder="./jira_data.db">
-            </div>
+            <div class="form-group"><label>Page Size</label><input type="number" id="set-pagesize" value="100" min="10" max="1000"></div>
+            <div class="form-group"><label>DB Path (optional)</label><input type="text" id="set-dbpath" placeholder="./jira_data.db"></div>
           </div>
         </div>
         <div class="btn-group">
@@ -523,40 +356,22 @@
       <!-- Collect -->
       <div id="page-collect" class="page">
         <h2 class="page-title">Data Collection</h2>
-
         <div class="card">
           <div class="card-title">Collection Mode</div>
           <div class="btn-group">
-            <button class="btn btn-success" onclick="startCollect('full')" id="btn-full">
-              &#9654; Full Collection
-            </button>
-            <button class="btn btn-outline" onclick="startCollect('meta')" id="btn-meta">
-              Metadata + Users + Security
-            </button>
-            <button class="btn btn-outline" onclick="startCollect('issues')" id="btn-issues">
-              Issues Only
-            </button>
-            <button class="btn btn-outline" onclick="startCollect('audit')" id="btn-audit">
-              Audit Log Only
-            </button>
-            <button class="btn btn-danger" onclick="abortCollect()" id="btn-abort" style="display:none">
-              &#9632; Abort
-            </button>
+            <button class="btn btn-success" onclick="startCollect('full')" id="btn-full">&#9654; Full Collection</button>
+            <button class="btn btn-outline" onclick="startCollect('meta')" id="btn-meta">Metadata + Users + Security</button>
+            <button class="btn btn-outline" onclick="startCollect('issues')" id="btn-issues">Issues Only</button>
+            <button class="btn btn-outline" onclick="startCollect('audit')" id="btn-audit">Audit Log Only</button>
+            <button class="btn btn-danger" onclick="abortCollect()" id="btn-abort" style="display:none">&#9632; Abort</button>
           </div>
         </div>
-
         <div id="phases-container" style="display:none">
-          <div class="card">
-            <div class="card-title">Progress</div>
-            <div id="phases" class="phases"></div>
-          </div>
+          <div class="card"><div class="card-title">Progress</div><div id="phases" class="phases"></div></div>
         </div>
-
         <div class="card">
           <div class="card-title">Log Output</div>
-          <div id="log-console" class="log-console">
-            <div class="log-line" style="color:var(--text2)">Ready. Choose a collection mode to start.</div>
-          </div>
+          <div id="log-console" class="log-console"><div class="log-line" style="color:var(--text2)">Ready. Choose a collection mode to start.</div></div>
         </div>
       </div>
 
@@ -571,16 +386,9 @@
       <div id="page-custom-sql" class="page">
         <h2 class="page-title">Custom SQL Query</h2>
         <div class="card">
-          <textarea class="sql-editor" id="sql-input" placeholder="SELECT * FROM issues LIMIT 20">SELECT
-  project_key,
-  COUNT(*) as total,
-  SUM(CASE WHEN status_category = 'Done' THEN 1 ELSE 0 END) as done,
-  SUM(CASE WHEN status_category != 'Done' THEN 1 ELSE 0 END) as open
-FROM issues
-GROUP BY project_key
-ORDER BY total DESC</textarea>
+          <div class="cm-container" id="cm-custom-sql"></div>
           <div class="btn-group">
-            <button class="btn btn-primary" onclick="runCustomSQL()">&#9654; Run Query</button>
+            <button class="btn btn-primary" onclick="runCustomSQL()">&#9654; Run Query (Ctrl+Enter)</button>
             <button class="btn btn-outline" onclick="exportQueryResult('csv')">Export CSV</button>
             <button class="btn btn-outline" onclick="exportQueryResult('json')">Export JSON</button>
           </div>
@@ -594,9 +402,7 @@ ORDER BY total DESC</textarea>
         <div class="form-row" style="margin-bottom: 16px; align-items: end;">
           <div class="form-group" style="max-width: 300px;">
             <label>Table</label>
-            <select id="browse-table" onchange="browseTable()">
-              <option value="">-- Select table --</option>
-            </select>
+            <select id="browse-table" onchange="browseTable()"><option value="">-- Select table --</option></select>
           </div>
           <div class="form-group" style="max-width: 200px;">
             <label>Limit</label>
@@ -612,41 +418,27 @@ ORDER BY total DESC</textarea>
       <!-- Audit Report -->
       <div id="page-audit" class="page">
         <h2 class="page-title">Audit Report</h2>
-
         <div class="card" style="margin-bottom:20px">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
             <div>
               <div class="card-title" style="margin-bottom:4px">SQL Audit Queries</div>
-              <span style="font-size:12px;color:var(--text2)">Chọn query bên dưới hoặc viết SQL tùy ý. Kết quả hiển thị trên màn hình và xuất Excel.</span>
+              <span style="font-size:12px;color:var(--text2)">Click any query to run. Use Custom SQL below for ad-hoc analysis. Export all to Excel for reporting.</span>
             </div>
             <div class="btn-group" style="margin:0">
-              <button class="btn btn-success" onclick="exportAllAuditExcel()">
-                &#128196; Export All to Excel
-              </button>
-              <button class="btn btn-outline" onclick="exportSelectedAuditExcel()">
-                Export Selected
-              </button>
+              <button class="btn btn-success" onclick="exportAllAuditExcel()">&#128196; Export All to Excel</button>
             </div>
           </div>
         </div>
-
-        <!-- Category filters -->
         <div id="audit-categories" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px"></div>
-
-        <!-- Query cards -->
         <div id="audit-query-list" style="display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:20px"></div>
-
-        <!-- Custom SQL area -->
         <div class="card" style="margin-bottom:16px">
           <div class="card-title">Custom SQL</div>
-          <textarea class="sql-editor" id="audit-sql-input" rows="4" placeholder="SELECT * FROM issues WHERE ..."></textarea>
+          <div class="cm-container" id="cm-audit-sql"></div>
           <div class="btn-group">
-            <button class="btn btn-primary" onclick="runAuditCustomSQL()">&#9654; Run</button>
+            <button class="btn btn-primary" onclick="runAuditCustomSQL()">&#9654; Run (Ctrl+Enter)</button>
             <button class="btn btn-outline" onclick="exportAuditCustomExcel()">&#128196; Export Excel</button>
           </div>
         </div>
-
-        <!-- Result area -->
         <div id="audit-result"></div>
       </div>
 
@@ -660,8 +452,14 @@ ORDER BY total DESC</textarea>
 
   <script>
     // ── State ──
-    let ws;
-    let lastQueryRows = [];
+    let ws, lastQueryRows = [], jiraBaseUrl = '';
+    let cmCustomSQL = null, cmAuditSQL = null;
+
+    // ── Loading helpers ──
+    function showLoading(targetId) {
+      const el = document.getElementById(targetId);
+      if (el) el.innerHTML = '<div class="loading-indicator"><div class="spinner"></div>Running query...</div>';
+    }
 
     // ── WebSocket ──
     function connectWS() {
@@ -683,7 +481,6 @@ ORDER BY total DESC</textarea>
       document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
       document.getElementById('page-' + name).classList.add('active');
       document.querySelector(`.nav-item[data-page="${name}"]`).classList.add('active');
-
       if (name === 'dashboard') loadStats();
       if (name === 'audit') loadAuditQueries();
       if (name === 'queries') loadQueries();
@@ -716,43 +513,29 @@ ORDER BY total DESC</textarea>
         PAGE_SIZE: document.getElementById('set-pagesize').value,
         DB_PATH: document.getElementById('set-dbpath').value,
       };
-      await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       toast('Settings saved!', 'success');
+      jiraBaseUrl = body.JIRA_BASE_URL;
       updateConnBadge(!!body.JIRA_BASE_URL);
     }
 
     async function testConnection() {
       const el = document.getElementById('test-result');
-      el.innerHTML = '<span style="color:var(--text2)">Testing connection...</span>';
+      el.innerHTML = '<div class="loading-indicator"><div class="spinner"></div>Testing connection...</div>';
       const res = await fetch('/api/test-connection', { method: 'POST' }).then(r => r.json());
       if (res.ok) {
-        el.innerHTML = `<div class="card" style="border-color:var(--green)">
-          <b style="color:var(--green)">Connected!</b><br>
-          <span style="color:var(--text2)">${res.info.serverTitle} v${res.info.version} (build ${res.info.buildNumber})</span>
-        </div>`;
+        el.innerHTML = `<div class="card" style="border-color:var(--green)"><b style="color:var(--green)">Connected!</b><br><span style="color:var(--text2)">${res.info.serverTitle} v${res.info.version}</span></div>`;
         document.getElementById('conn-status').className = 'conn-badge ok';
         document.getElementById('conn-status').textContent = `v${res.info.version}`;
       } else {
-        el.innerHTML = `<div class="card" style="border-color:var(--red)">
-          <b style="color:var(--red)">Connection Failed</b><br>
-          <span style="font-size:12px">${res.error}</span>
-        </div>`;
+        el.innerHTML = `<div class="card" style="border-color:var(--red)"><b style="color:var(--red)">Connection Failed</b><br><span style="font-size:12px">${res.error}</span></div>`;
       }
     }
 
     function updateConnBadge(configured) {
       const el = document.getElementById('conn-status');
-      if (configured) {
-        el.className = 'conn-badge ok';
-        el.textContent = 'Configured';
-      } else {
-        el.className = 'conn-badge unknown';
-        el.textContent = 'Not configured';
-      }
+      el.className = configured ? 'conn-badge ok' : 'conn-badge unknown';
+      el.textContent = configured ? 'Configured' : 'Not configured';
     }
 
     // ── Dashboard ──
@@ -760,94 +543,53 @@ ORDER BY total DESC</textarea>
       const res = await fetch('/api/stats').then(r => r.json());
       const grid = document.getElementById('stats-grid');
       const important = ['projects','issues','users','comments','changelogs','groups','audit_log','sprints'];
-
       let html = '';
       for (const key of important) {
-        const count = res.stats[key] || 0;
-        html += `<div class="stat-card">
-          <div class="stat-value">${count.toLocaleString()}</div>
-          <div class="stat-label">${key.replace(/_/g, ' ')}</div>
-        </div>`;
+        html += `<div class="stat-card"><div class="stat-value">${(res.stats[key]||0).toLocaleString()}</div><div class="stat-label">${key.replace(/_/g,' ')}</div></div>`;
       }
-
-      if (res.fileSize) {
-        const mb = (res.fileSize / 1048576).toFixed(1);
-        html += `<div class="stat-card">
-          <div class="stat-value">${mb}</div>
-          <div class="stat-label">DB Size (MB)</div>
-        </div>`;
-      }
+      if (res.fileSize) html += `<div class="stat-card"><div class="stat-value">${(res.fileSize/1048576).toFixed(1)}</div><div class="stat-label">DB Size (MB)</div></div>`;
       grid.innerHTML = html;
-
       const runEl = document.getElementById('last-run-info');
       if (res.lastRun) {
         const r = res.lastRun;
-        runEl.innerHTML = `<b>Status:</b> ${r.status} &nbsp;|&nbsp;
-          <b>Started:</b> ${r.started_at} &nbsp;|&nbsp;
-          <b>Finished:</b> ${r.finished_at || '-'} &nbsp;|&nbsp;
-          <b>Issues:</b> ${r.total_issues} &nbsp;|&nbsp;
-          <b>JQL:</b> ${r.jql_filter || 'all'}<br>
-          <span style="color:var(--text2)">${r.notes || ''}</span>`;
+        runEl.innerHTML = `<b>Status:</b> ${r.status} | <b>Started:</b> ${r.started_at} | <b>Finished:</b> ${r.finished_at||'-'} | <b>Issues:</b> ${r.total_issues} | <b>JQL:</b> ${r.jql_filter||'all'}<br><span style="color:var(--text2)">${r.notes||''}</span>`;
       }
     }
 
     // ── Collection ──
     const ALL_PHASES = ['metadata','projects','users','issues','boards','security','audit_log'];
     let currentPhaseIdx = -1;
-
     async function startCollect(mode) {
-      const res = await fetch('/api/collect/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode }),
-      }).then(r => r.json());
-
-      if (res.error) { toast(res.error, 'error'); return; }
+      const res = await fetch('/api/collect/start', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mode}) }).then(r=>r.json());
+      if (res.error) { toast(res.error,'error'); return; }
       document.getElementById('log-console').innerHTML = '';
       currentPhaseIdx = -1;
     }
-
-    async function abortCollect() {
-      await fetch('/api/collect/abort', { method: 'POST' });
-    }
-
+    async function abortCollect() { await fetch('/api/collect/abort',{method:'POST'}); }
     function updateCollectionUI(state) {
       const running = state.running;
-      document.querySelectorAll('#btn-full,#btn-meta,#btn-issues,#btn-audit').forEach(b => {
-        b.disabled = running;
-      });
+      document.querySelectorAll('#btn-full,#btn-meta,#btn-issues,#btn-audit').forEach(b => b.disabled = running);
       document.getElementById('btn-abort').style.display = running ? 'inline-flex' : 'none';
-
-      if (state.phase) {
-        document.getElementById('phases-container').style.display = 'block';
-        updatePhases(state.phase);
-      }
-
-      if (state.log && state.log.length > 0) {
+      if (state.phase) { document.getElementById('phases-container').style.display = 'block'; updatePhases(state.phase); }
+      if (state.log?.length > 0) {
         const logEl = document.getElementById('log-console');
         logEl.innerHTML = '';
-        for (const entry of state.log) {
-          appendLog(entry, false);
-        }
+        for (const entry of state.log) appendLog(entry, false);
         logEl.scrollTop = logEl.scrollHeight;
       }
     }
-
     function updatePhases(currentPhase) {
       const idx = ALL_PHASES.indexOf(currentPhase);
       if (idx >= 0) currentPhaseIdx = idx;
-
-      const container = document.getElementById('phases');
-      container.innerHTML = ALL_PHASES.map((p, i) => {
+      document.getElementById('phases').innerHTML = ALL_PHASES.map((p, i) => {
         let cls = '';
         if (currentPhase === 'completed') cls = 'done';
         else if (currentPhase === 'error') cls = i <= currentPhaseIdx ? (i < currentPhaseIdx ? 'done' : 'error') : '';
         else if (i < currentPhaseIdx) cls = 'done';
         else if (i === currentPhaseIdx) cls = 'active';
-        return `<span class="phase-badge ${cls}">${p.replace(/_/g, ' ')}</span>`;
+        return `<span class="phase-badge ${cls}">${p.replace(/_/g,' ')}</span>`;
       }).join('');
     }
-
     function appendLog(entry, scroll = true) {
       const logEl = document.getElementById('log-console');
       const div = document.createElement('div');
@@ -857,427 +599,267 @@ ORDER BY total DESC</textarea>
       if (entry.text?.includes('[ERROR]') || entry.text?.includes('[FATAL]')) cls = 'log-error';
       else if (entry.text?.includes('[WARN]')) cls = 'log-warn';
       else if (entry.text?.includes('completed') || entry.text?.includes('collected')) cls = 'log-success';
-      div.innerHTML = `<span class="log-time">${time}</span><span class="${cls}">${escHtml(entry.text || '')}</span>`;
+      div.innerHTML = `<span class="log-time">${time}</span><span class="${cls}">${escHtml(entry.text||'')}</span>`;
       logEl.appendChild(div);
       if (scroll) logEl.scrollTop = logEl.scrollHeight;
     }
 
-    // ── Queries ──
+    // ── Queries Page ──
     async function loadQueries() {
       const queries = await fetch('/api/queries').then(r => r.json());
       const el = document.getElementById('query-list');
-
-      // Group by category
       const groups = {};
       for (const q of queries) {
-        const cat = q.key.includes('user') || q.key.includes('inactive') ? 'Users & Access' :
-          q.key.includes('group') || q.key.includes('admin') || q.key.includes('role') || q.key.includes('permission') || q.key.includes('security') ? 'Security & Permissions' :
-          q.key.includes('project') || q.key.includes('sprint') ? 'Projects & Sprints' :
-          q.key.includes('worklog') || q.key.includes('attachment') ? 'Worklogs & Attachments' :
-          q.key.includes('status') || q.key.includes('assignee') || q.key.includes('change') || q.key.includes('audit') ? 'Change Tracking' :
-          'Issues';
-        if (!groups[cat]) groups[cat] = [];
-        groups[cat].push(q);
+        const cat = q.key.includes('user')||q.key.includes('inactive') ? 'Users & Access' :
+          q.key.includes('group')||q.key.includes('admin')||q.key.includes('role')||q.key.includes('permission')||q.key.includes('security') ? 'Security & Permissions' :
+          q.key.includes('project')||q.key.includes('sprint') ? 'Projects & Sprints' :
+          q.key.includes('worklog')||q.key.includes('attachment') ? 'Worklogs & Attachments' :
+          q.key.includes('status')||q.key.includes('assignee')||q.key.includes('change')||q.key.includes('audit') ? 'Change Tracking' : 'Issues';
+        (groups[cat] ??= []).push(q);
       }
-
       let html = '';
       for (const [cat, items] of Object.entries(groups)) {
-        html += `<div style="grid-column: 1 / -1; font-size:13px; font-weight:600; color:var(--text2); margin-top:8px">${cat}</div>`;
-        for (const q of items) {
-          html += `<div class="query-item" onclick="runNamedQuery('${q.key}', this)">
-            <div class="q-key">${q.key}</div>
-            <div class="q-title">${q.title}</div>
-          </div>`;
-        }
+        html += `<div style="grid-column:1/-1;font-size:13px;font-weight:600;color:var(--text2);margin-top:8px">${cat}</div>`;
+        for (const q of items) html += `<div class="query-item" onclick="runNamedQuery('${q.key}',this)"><div class="q-key">${q.key}</div><div class="q-title">${q.title}</div></div>`;
       }
       el.innerHTML = html;
     }
-
     async function runNamedQuery(name, el) {
       document.querySelectorAll('.query-item').forEach(i => i.classList.remove('active'));
       if (el) el.classList.add('active');
-
+      showLoading('query-result');
       const res = await fetch(`/api/queries/${name}`).then(r => r.json());
       lastQueryRows = res.rows;
       document.getElementById('query-result').innerHTML = `
         <div class="card" style="margin-top:16px">
           <div class="card-title">${res.title}</div>
           <details style="margin-bottom:8px"><summary style="cursor:pointer;color:var(--text2);font-size:12px">Show SQL</summary>
-            <pre style="background:#0a0c10;padding:8px;border-radius:6px;font-size:12px;color:var(--green);margin-top:6px;overflow-x:auto">${escHtml(res.sql || '')}</pre>
+            <pre style="background:#0a0c10;padding:8px;border-radius:6px;font-size:12px;color:var(--green);margin-top:6px;overflow-x:auto">${escHtml(res.sql||'')}</pre>
           </details>
-          ${res.error ? `<div style="color:var(--red)">${res.error}</div>` : ''}
-          <div class="result-bar">
-            <span>${res.count} rows</span>
-            <div>
-              <button class="btn btn-outline" onclick="downloadData('csv')" style="padding:4px 10px;font-size:11px">CSV</button>
-              <button class="btn btn-outline" onclick="downloadData('json')" style="padding:4px 10px;font-size:11px">JSON</button>
-            </div>
+          ${res.error?`<div style="color:var(--red)">${res.error}</div>`:''}
+          <div class="result-bar"><span>${res.count} rows</span>
+            <div><button class="btn btn-outline" onclick="downloadData('csv')" style="padding:4px 10px;font-size:11px">CSV</button>
+            <button class="btn btn-outline" onclick="downloadData('json')" style="padding:4px 10px;font-size:11px">JSON</button></div>
           </div>
           ${renderTable(res.rows)}
         </div>`;
     }
 
     // ── Custom SQL ──
+    function getCustomSQLText() {
+      return cmCustomSQL ? cmCustomSQL.state.doc.toString() : '';
+    }
     async function runCustomSQL() {
-      const sql = document.getElementById('sql-input').value.trim();
+      const sql = getCustomSQLText().trim();
       if (!sql) return;
-      const res = await fetch('/api/queries/custom', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql }),
-      }).then(r => r.json());
-
+      showLoading('custom-result');
+      const res = await fetch('/api/queries/custom', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sql}) }).then(r=>r.json());
       lastQueryRows = res.rows;
       document.getElementById('custom-result').innerHTML = `
-        ${res.error ? `<div class="card" style="border-color:var(--red);color:var(--red)">${res.error}</div>` : ''}
-        <div class="result-bar">
-          <span>${res.count} rows</span>
-          <div>
-            <button class="btn btn-outline" onclick="downloadData('csv')" style="padding:4px 10px;font-size:11px">CSV</button>
-            <button class="btn btn-outline" onclick="downloadData('json')" style="padding:4px 10px;font-size:11px">JSON</button>
-          </div>
+        ${res.error?`<div class="card" style="border-color:var(--red);color:var(--red)">${res.error}</div>`:''}
+        <div class="result-bar"><span>${res.count} rows</span>
+          <div><button class="btn btn-outline" onclick="downloadData('csv')" style="padding:4px 10px;font-size:11px">CSV</button>
+          <button class="btn btn-outline" onclick="downloadData('json')" style="padding:4px 10px;font-size:11px">JSON</button></div>
         </div>
         ${renderTable(res.rows)}`;
     }
-
-    function exportQueryResult(format) {
-      if (!lastQueryRows || lastQueryRows.length === 0) { toast('No data to export', 'error'); return; }
-      downloadData(format);
-    }
+    function exportQueryResult(format) { if (!lastQueryRows?.length) { toast('No data','error'); return; } downloadData(format); }
 
     // ── Browse Tables ──
     async function loadTableList() {
-      const stats = await fetch('/api/stats').then(r => r.json());
-      const select = document.getElementById('browse-table');
-      const current = select.value;
-      select.innerHTML = '<option value="">-- Select table --</option>';
-      for (const [name, count] of Object.entries(stats.stats || {}).sort((a, b) => a[0].localeCompare(b[0]))) {
-        select.innerHTML += `<option value="${name}">${name} (${count})</option>`;
-      }
-      if (current) select.value = current;
+      const stats = await fetch('/api/stats').then(r=>r.json());
+      const sel = document.getElementById('browse-table');
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">-- Select table --</option>';
+      for (const [name, count] of Object.entries(stats.stats||{}).sort((a,b)=>a[0].localeCompare(b[0])))
+        sel.innerHTML += `<option value="${name}">${name} (${count})</option>`;
+      if (cur) sel.value = cur;
     }
-
     async function browseTable() {
       const table = document.getElementById('browse-table').value;
       if (!table) return;
+      showLoading('browse-result');
       const limit = document.getElementById('browse-limit').value || 100;
-      const sql = `SELECT * FROM "${table}" LIMIT ${parseInt(limit)}`;
-      const res = await fetch('/api/queries/custom', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql }),
-      }).then(r => r.json());
-
+      const res = await fetch('/api/queries/custom', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sql:`SELECT * FROM "${table}" LIMIT ${parseInt(limit)}`}) }).then(r=>r.json());
       lastQueryRows = res.rows;
-      document.getElementById('browse-result').innerHTML = `
-        <div class="result-bar"><span>${res.count} rows</span></div>
-        ${renderTable(res.rows)}`;
+      document.getElementById('browse-result').innerHTML = `<div class="result-bar"><span>${res.count} rows</span></div>${renderTable(res.rows)}`;
     }
-
-    function exportBrowseCSV() {
-      const table = document.getElementById('browse-table').value;
-      if (table) window.open(`/api/export/${table}?format=csv`);
-    }
-    function exportBrowseJSON() {
-      const table = document.getElementById('browse-table').value;
-      if (table) window.open(`/api/export/${table}?format=json`);
-    }
+    function exportBrowseCSV() { const t = document.getElementById('browse-table').value; if (t) window.open(`/api/export/${t}?format=csv`); }
+    function exportBrowseJSON() { const t = document.getElementById('browse-table').value; if (t) window.open(`/api/export/${t}?format=json`); }
 
     // ── Schema ──
     async function loadSchema() {
-      const tables = await fetch('/api/schema').then(r => r.json());
-      const el = document.getElementById('schema-list');
-      el.innerHTML = tables.map(t => {
-        const highlighted = (t.sql || '')
+      const tables = await fetch('/api/schema').then(r=>r.json());
+      document.getElementById('schema-list').innerHTML = tables.map(t => {
+        const h = (t.sql||'')
           .replace(/\b(CREATE TABLE IF NOT EXISTS|CREATE INDEX IF NOT EXISTS|PRIMARY KEY|FOREIGN KEY|REFERENCES|NOT NULL|DEFAULT|UNIQUE|AUTOINCREMENT|INTEGER|TEXT|REAL|ON CONFLICT)\b/g, '<span class="kw">$1</span>')
           .replace(/(?<=CREATE TABLE IF NOT EXISTS\s+)(\w+)/g, '<span class="tbl">$1</span>');
-        return `<div class="schema-block">${highlighted}</div>`;
+        return `<div class="schema-block">${h}</div>`;
       }).join('');
     }
 
-    // ── Render Table ──
-    // Issue key pattern: PROJECT-123
+    // ── Render Table with sort + filter ──
     const issueKeyRe = /^[A-Z][A-Z0-9_]+-\d+$/;
     const issueKeyInlineRe = /\b([A-Z][A-Z0-9_]+-\d+)\b/g;
-
-    // Detect if a column likely contains issue keys
-    function isIssueKeyCol(colName) {
-      const cl = colName.toLowerCase();
-      return cl === 'key' || cl === 'issue_key' || cl === 'issue key'
-        || cl === 'parent_key' || cl === 'epic_key'
-        || cl === 'linked_issue_key' || cl === 'issue keys'
-        || cl === 'issue key';
-    }
-
+    function isIssueKeyCol(c) { const l=c.toLowerCase(); return ['key','issue_key','issue key','parent_key','epic_key','linked_issue_key','issue keys'].includes(l); }
     function renderCellValue(col, val) {
       if (val === null || val === undefined) return '<td class="null">NULL</td>';
       const str = String(val);
-      const display = str.length > 200 ? str.substring(0, 200) + '...' : str;
-
-      // Single issue key cell (e.g. key column)
-      if (issueKeyRe.test(str.trim()) && jiraBaseUrl) {
+      const display = str.length > 200 ? str.substring(0,200)+'...' : str;
+      if (issueKeyRe.test(str.trim()) && jiraBaseUrl)
         return `<td><a href="${jiraBaseUrl}/browse/${escAttr(str.trim())}" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:600">${escHtml(str)}</a></td>`;
-      }
-
-      // Column known to contain issue keys, or cell contains multiple keys
       if ((isIssueKeyCol(col) || issueKeyInlineRe.test(str)) && jiraBaseUrl) {
         issueKeyInlineRe.lastIndex = 0;
-        const linked = escHtml(display).replace(/\b([A-Z][A-Z0-9_]+-\d+)\b/g,
-          `<a href="${jiraBaseUrl}/browse/$1" target="_blank" style="color:var(--accent);text-decoration:none">$1</a>`);
+        const linked = escHtml(display).replace(/\b([A-Z][A-Z0-9_]+-\d+)\b/g, `<a href="${jiraBaseUrl}/browse/$1" target="_blank" style="color:var(--accent);text-decoration:none">$1</a>`);
         return `<td title="${escAttr(str)}">${linked}</td>`;
       }
-
       return `<td title="${escAttr(str)}">${escHtml(display)}</td>`;
     }
-
-    let _tableCounter = 0;
-
+    let _tc = 0;
     function renderTable(rows) {
-      if (!rows || rows.length === 0) return '<div style="color:var(--text2);padding:12px">No results</div>';
+      if (!rows?.length) return '<div style="color:var(--text2);padding:12px">No results</div>';
       const cols = Object.keys(rows[0]).filter(c => c !== 'raw_json');
-      const maxRows = 1000;
-      const displayRows = rows.slice(0, maxRows);
-      const tid = 'tbl-' + (++_tableCounter);
-
-      let html = `<div class="table-filter-bar">
-        <input type="text" id="${tid}-filter" placeholder="Filter... (type to search across all columns)" oninput="filterTable('${tid}')">
-        <span class="filter-info" id="${tid}-info">${displayRows.length} rows</span>
-        <button class="filter-clear" onclick="document.getElementById('${tid}-filter').value='';filterTable('${tid}')">Clear</button>
-      </div>`;
-      html += `<div class="table-wrapper" style="max-height:600px;overflow:auto">
-        <table class="data-table" id="${tid}"><thead><tr>`;
-      for (let i = 0; i < cols.length; i++) {
-        html += `<th onclick="sortTable('${tid}',${i})" data-col="${i}">${escHtml(cols[i])}<span class="sort-arrow">&#9650;</span></th>`;
+      const max = 1000, dr = rows.slice(0, max), tid = 'tbl-'+(++_tc);
+      let h = `<div class="table-filter-bar">
+        <input type="text" id="${tid}-f" placeholder="Filter... (type to search all columns)" oninput="filterTable('${tid}')">
+        <span class="filter-info" id="${tid}-i">${dr.length} rows</span>
+        <button class="filter-clear" onclick="document.getElementById('${tid}-f').value='';filterTable('${tid}')">Clear</button>
+      </div><div class="table-wrapper" style="max-height:600px;overflow:auto"><table class="data-table" id="${tid}"><thead><tr>`;
+      for (let i=0;i<cols.length;i++) h+=`<th onclick="sortTable('${tid}',${i})" data-col="${i}">${escHtml(cols[i])}<span class="sort-arrow">&#9650;</span></th>`;
+      h+='</tr></thead><tbody>';
+      for (const row of dr) {
+        const raw = cols.map(c=>String(row[c]??'')).join('\t').toLowerCase();
+        h+=`<tr data-raw="${escAttr(raw)}">`;
+        for (const col of cols) h+=renderCellValue(col,row[col]);
+        h+='</tr>';
       }
-      html += '</tr></thead><tbody>';
-      for (const row of displayRows) {
-        // Store raw text for filtering in data attribute
-        const rawText = cols.map(c => String(row[c] ?? '')).join('\t').toLowerCase();
-        html += `<tr data-raw="${escAttr(rawText)}">`;
-        for (const col of cols) {
-          html += renderCellValue(col, row[col]);
-        }
-        html += '</tr>';
-      }
-      html += '</tbody></table></div>';
-      if (rows.length > maxRows) {
-        html += `<div style="color:var(--text2);font-size:12px;margin-top:8px">Showing ${maxRows} of ${rows.length} rows</div>`;
-      }
-      return html;
+      h+='</tbody></table></div>';
+      if (rows.length>max) h+=`<div style="color:var(--text2);font-size:12px;margin-top:8px">Showing ${max} of ${rows.length}</div>`;
+      return h;
     }
-
-    // ── Sort ──
-    const _sortState = {}; // tid -> { col, dir }
-
-    function sortTable(tid, colIdx) {
-      const table = document.getElementById(tid);
-      if (!table) return;
-      const tbody = table.querySelector('tbody');
-      const rowsArr = Array.from(tbody.querySelectorAll('tr'));
-      const ths = table.querySelectorAll('thead th');
-
-      // Determine direction
-      const prev = _sortState[tid];
-      let dir = 'asc';
-      if (prev && prev.col === colIdx && prev.dir === 'asc') dir = 'desc';
-      _sortState[tid] = { col: colIdx, dir };
-
-      // Update header styles
-      ths.forEach(th => { th.classList.remove('sort-asc', 'sort-desc'); });
-      ths[colIdx].classList.add('sort-' + dir);
-      ths[colIdx].querySelector('.sort-arrow').innerHTML = dir === 'asc' ? '&#9650;' : '&#9660;';
-
-      // Sort rows
-      rowsArr.sort((a, b) => {
-        const aVal = a.children[colIdx]?.textContent?.trim() ?? '';
-        const bVal = b.children[colIdx]?.textContent?.trim() ?? '';
-        // Try numeric
-        const aNum = parseFloat(aVal);
-        const bNum = parseFloat(bVal);
-        if (!isNaN(aNum) && !isNaN(bNum)) {
-          return dir === 'asc' ? aNum - bNum : bNum - aNum;
-        }
-        // String compare
-        const cmp = aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: 'base' });
-        return dir === 'asc' ? cmp : -cmp;
+    const _ss = {};
+    function sortTable(tid, ci) {
+      const tbl=document.getElementById(tid); if(!tbl)return;
+      const tbody=tbl.querySelector('tbody'), ra=Array.from(tbody.querySelectorAll('tr')), ths=tbl.querySelectorAll('thead th');
+      const prev=_ss[tid]; let dir='asc';
+      if(prev?.col===ci&&prev.dir==='asc') dir='desc';
+      _ss[tid]={col:ci,dir};
+      ths.forEach(th=>th.classList.remove('sort-asc','sort-desc'));
+      ths[ci].classList.add('sort-'+dir);
+      ths[ci].querySelector('.sort-arrow').innerHTML = dir==='asc'?'&#9650;':'&#9660;';
+      ra.sort((a,b)=>{
+        const av=a.children[ci]?.textContent?.trim()??'', bv=b.children[ci]?.textContent?.trim()??'';
+        const an=parseFloat(av),bn=parseFloat(bv);
+        if(!isNaN(an)&&!isNaN(bn)) return dir==='asc'?an-bn:bn-an;
+        const c=av.localeCompare(bv,undefined,{numeric:true,sensitivity:'base'});
+        return dir==='asc'?c:-c;
       });
-
-      // Re-append
-      for (const row of rowsArr) tbody.appendChild(row);
+      for (const r of ra) tbody.appendChild(r);
     }
-
-    // ── Filter ──
     function filterTable(tid) {
-      const input = document.getElementById(tid + '-filter');
-      const info = document.getElementById(tid + '-info');
-      const table = document.getElementById(tid);
-      if (!input || !table) return;
-
-      const terms = input.value.toLowerCase().split(/\s+/).filter(Boolean);
-      const rows = table.querySelectorAll('tbody tr');
-      let visible = 0;
-
-      rows.forEach(row => {
-        const raw = row.getAttribute('data-raw') || '';
-        const match = terms.length === 0 || terms.every(t => raw.includes(t));
-        row.classList.toggle('filter-hidden', !match);
-        if (match) visible++;
-      });
-
-      if (info) info.textContent = terms.length > 0 ? `${visible} / ${rows.length} rows` : `${rows.length} rows`;
+      const inp=document.getElementById(tid+'-f'), info=document.getElementById(tid+'-i'), tbl=document.getElementById(tid);
+      if(!inp||!tbl)return;
+      const terms=inp.value.toLowerCase().split(/\s+/).filter(Boolean);
+      const rows=tbl.querySelectorAll('tbody tr'); let vis=0;
+      rows.forEach(r=>{const raw=r.getAttribute('data-raw')||'';const m=!terms.length||terms.every(t=>raw.includes(t));r.classList.toggle('filter-hidden',!m);if(m)vis++;});
+      if(info) info.textContent = terms.length?`${vis} / ${rows.length} rows`:`${rows.length} rows`;
     }
 
     // ── Download ──
     function downloadData(format) {
-      if (!lastQueryRows || lastQueryRows.length === 0) return;
-      const rows = lastQueryRows;
-      const cols = Object.keys(rows[0]).filter(c => c !== 'raw_json');
-
-      let content, mime, ext;
-      if (format === 'csv') {
-        const esc = (v) => {
-          if (v == null) return '';
-          const s = String(v);
-          return (s.includes(',') || s.includes('"') || s.includes('\n')) ? '"' + s.replace(/"/g, '""') + '"' : s;
-        };
-        content = [cols.join(','), ...rows.map(r => cols.map(c => esc(r[c])).join(','))].join('\n');
-        mime = 'text/csv';
-        ext = 'csv';
+      if(!lastQueryRows?.length)return;
+      const rows=lastQueryRows, cols=Object.keys(rows[0]).filter(c=>c!=='raw_json');
+      let content,mime,ext;
+      if(format==='csv'){
+        const esc=v=>{if(v==null)return'';const s=String(v);return(s.includes(',')||s.includes('"')||s.includes('\n'))?'"'+s.replace(/"/g,'""')+'"':s;};
+        content=[cols.join(','),...rows.map(r=>cols.map(c=>esc(r[c])).join(','))].join('\n');mime='text/csv';ext='csv';
       } else {
-        content = JSON.stringify(rows.map(r => { const o = {}; cols.forEach(c => o[c] = r[c]); return o; }), null, 2);
-        mime = 'application/json';
-        ext = 'json';
+        content=JSON.stringify(rows.map(r=>{const o={};cols.forEach(c=>o[c]=r[c]);return o;}),null,2);mime='application/json';ext='json';
       }
-
-      const blob = new Blob([content], { type: mime });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `query_result.${ext}`;
-      a.click();
+      const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type:mime}));a.download=`query_result.${ext}`;a.click();
     }
 
     // ── Utils ──
-    function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-    function escAttr(s) { return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-    function toast(msg, type) {
-      const t = document.createElement('div');
-      t.className = `toast ${type}`;
-      t.textContent = msg;
-      document.body.appendChild(t);
-      setTimeout(() => t.remove(), 3000);
-    }
-
-    // ── SQL editor: Ctrl+Enter to run ──
-    document.getElementById('sql-input').addEventListener('keydown', (e) => {
-      if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); runCustomSQL(); }
-    });
+    function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+    function escAttr(s){return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+    function toast(msg,type){const t=document.createElement('div');t.className=`toast ${type}`;t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3000);}
 
     // ── Audit Page ──
-    let auditQueries = [];
-    let auditSelectedKeys = new Set();
-    let auditActiveCategory = null;
-    let auditLastRows = [];
-    let auditLastTitle = '';
-    let auditLastSQL = '';
+    let auditQueries=[], auditActiveCategory=null, auditLastRows=[], auditLastTitle='', auditLastSQL='';
+    let _auditLoaded = false;
 
     async function loadAuditQueries() {
-      auditQueries = await fetch('/api/audit-queries').then(r => r.json());
-      const cats = [...new Set(auditQueries.map(q => q.category))];
-
-      // Category filters
-      const catEl = document.getElementById('audit-categories');
-      catEl.innerHTML = `<span class="cat-filter active" onclick="filterAuditCat(null, this)">All (${auditQueries.length})</span>` +
-        cats.map(c => {
-          const cnt = auditQueries.filter(q => q.category === c).length;
-          return `<span class="cat-filter" onclick="filterAuditCat('${c}', this)">${c} (${cnt})</span>`;
-        }).join('');
-
+      if (_auditLoaded) return;
+      auditQueries = await fetch('/api/audit-queries').then(r=>r.json());
+      _auditLoaded = true;
+      const cats = [...new Set(auditQueries.map(q=>q.category))];
+      document.getElementById('audit-categories').innerHTML =
+        `<span class="cat-filter active" onclick="filterAuditCat(null,this)">All (${auditQueries.length})</span>` +
+        cats.map(c=>`<span class="cat-filter" onclick="filterAuditCat('${c}',this)">${c} (${auditQueries.filter(q=>q.category===c).length})</span>`).join('');
       renderAuditList();
     }
-
-    function filterAuditCat(cat, el) {
-      auditActiveCategory = cat;
-      document.querySelectorAll('.cat-filter').forEach(f => f.classList.remove('active'));
-      if (el) el.classList.add('active');
+    function filterAuditCat(cat,el) {
+      auditActiveCategory=cat;
+      document.querySelectorAll('.cat-filter').forEach(f=>f.classList.remove('active'));
+      if(el) el.classList.add('active');
       renderAuditList();
     }
-
     function renderAuditList() {
-      const filtered = auditActiveCategory
-        ? auditQueries.filter(q => q.category === auditActiveCategory)
-        : auditQueries;
-
-      const el = document.getElementById('audit-query-list');
-      el.innerHTML = filtered.map(q => `
-        <div class="audit-card ${auditSelectedKeys.has(q.key) ? 'selected' : ''}" id="acard-${q.key}">
-          <div class="audit-check" onclick="event.stopPropagation();toggleAuditSelect('${q.key}')">&#10003;</div>
-          <div class="audit-body" onclick="runAuditQuery('${q.key}')">
+      const filtered = auditActiveCategory ? auditQueries.filter(q=>q.category===auditActiveCategory) : auditQueries;
+      document.getElementById('audit-query-list').innerHTML = filtered.map(q=>`
+        <div class="audit-card" id="acard-${q.key}" onclick="runAuditQuery('${q.key}')">
+          <div class="audit-body">
             <div class="audit-key">${q.key}</div>
             <div class="audit-title">${q.title}</div>
             <div class="audit-desc">${q.description}</div>
           </div>
-          <div class="audit-right">
-            <span class="audit-cat">${q.category}</span>
-          </div>
-        </div>
-      `).join('');
-    }
-
-    function toggleAuditSelect(key) {
-      if (auditSelectedKeys.has(key)) auditSelectedKeys.delete(key);
-      else auditSelectedKeys.add(key);
-      const card = document.getElementById('acard-' + key);
-      if (card) card.classList.toggle('selected');
+          <span class="audit-cat">${q.category}</span>
+        </div>`).join('');
     }
 
     async function runAuditQuery(key) {
-      const res = await fetch(`/api/audit-queries/${key}`).then(r => r.json());
-      auditLastRows = res.rows;
-      auditLastTitle = res.title;
-      auditLastSQL = res.sql;
+      // Show loading on the card itself
+      document.querySelectorAll('.audit-card').forEach(c=>{c.classList.remove('active','loading');});
+      const card = document.getElementById('acard-'+key);
+      if(card){card.classList.add('active','loading');}
+      showLoading('audit-result');
 
-      // Highlight active card
-      document.querySelectorAll('.audit-card').forEach(c => c.classList.remove('active'));
-      const card = document.getElementById('acard-' + key);
-      if (card) card.classList.add('active');
+      const res = await fetch(`/api/audit-queries/${key}`).then(r=>r.json());
+      auditLastRows=res.rows; auditLastTitle=res.title; auditLastSQL=res.sql;
+      lastQueryRows=res.rows;
+
+      if(card) card.classList.remove('loading');
 
       document.getElementById('audit-result').innerHTML = `
         <div class="card">
           <div class="audit-result-header">
             <div>
               <div class="card-title" style="margin-bottom:2px">${escHtml(res.title)}</div>
-              <span style="font-size:12px;color:var(--text2)">${escHtml(res.description || '')}</span>
+              <span style="font-size:12px;color:var(--text2)">${escHtml(res.description||'')}</span>
             </div>
             <div class="btn-group" style="margin:0">
               <button class="btn btn-success" onclick="exportCurrentAuditExcel()" style="padding:6px 12px;font-size:12px">&#128196; Excel</button>
               <button class="btn btn-outline" onclick="downloadData('csv')" style="padding:6px 12px;font-size:12px">CSV</button>
             </div>
           </div>
-          <details style="margin-bottom:8px">
-            <summary style="cursor:pointer;color:var(--text2);font-size:12px">Show SQL</summary>
-            <pre style="background:#0a0c10;padding:8px;border-radius:6px;font-size:12px;color:var(--green);margin-top:6px;overflow-x:auto;white-space:pre-wrap">${escHtml(res.sql || '')}</pre>
+          <details style="margin-bottom:8px"><summary style="cursor:pointer;color:var(--text2);font-size:12px">Show SQL</summary>
+            <pre style="background:#0a0c10;padding:8px;border-radius:6px;font-size:12px;color:var(--green);margin-top:6px;overflow-x:auto;white-space:pre-wrap">${escHtml(res.sql||'')}</pre>
           </details>
-          ${res.error ? `<div style="color:var(--red);margin-bottom:8px">${escHtml(res.error)}</div>` : ''}
+          ${res.error?`<div style="color:var(--red);margin-bottom:8px">${escHtml(res.error)}</div>`:''}
           <div class="result-bar"><span>${res.count} rows</span></div>
           ${renderTable(res.rows)}
         </div>`;
-      // Scroll to result
-      document.getElementById('audit-result').scrollIntoView({ behavior: 'smooth' });
+      document.getElementById('audit-result').scrollIntoView({behavior:'smooth'});
     }
 
+    function getAuditSQLText() { return cmAuditSQL ? cmAuditSQL.state.doc.toString() : ''; }
+
     async function runAuditCustomSQL() {
-      const sql = document.getElementById('audit-sql-input').value.trim();
-      if (!sql) return;
-      const res = await fetch('/api/queries/custom', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql }),
-      }).then(r => r.json());
-      auditLastRows = res.rows;
-      auditLastTitle = 'Custom Query';
-      auditLastSQL = sql;
-      lastQueryRows = res.rows;
+      const sql = getAuditSQLText().trim();
+      if(!sql)return;
+      showLoading('audit-result');
+      const res = await fetch('/api/queries/custom', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sql}) }).then(r=>r.json());
+      auditLastRows=res.rows; auditLastTitle='Custom Query'; auditLastSQL=sql; lastQueryRows=res.rows;
       document.getElementById('audit-result').innerHTML = `
         <div class="card">
           <div class="audit-result-header">
@@ -1287,106 +869,53 @@ ORDER BY total DESC</textarea>
               <button class="btn btn-outline" onclick="downloadData('csv')" style="padding:6px 12px;font-size:12px">CSV</button>
             </div>
           </div>
-          ${res.error ? `<div style="color:var(--red);margin-bottom:8px">${escHtml(res.error)}</div>` : ''}
+          ${res.error?`<div style="color:var(--red);margin-bottom:8px">${escHtml(res.error)}</div>`:''}
           <div class="result-bar"><span>${res.count} rows</span></div>
           ${renderTable(res.rows)}
         </div>`;
     }
 
-    // Export single query result to Excel
     async function exportCurrentAuditExcel() {
-      if (!auditLastSQL) { toast('No query to export', 'error'); return; }
-      const form = document.createElement('form');
-      form.method = 'POST'; form.action = '/api/export-excel';
-      form.target = '_blank'; form.style.display = 'none';
-      const addField = (name, val) => { const i = document.createElement('input'); i.type = 'hidden'; i.name = name; i.value = val; form.appendChild(i); };
-      // Use fetch + blob for POST with JSON body
-      const res = await fetch('/api/export-excel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql: auditLastSQL, filename: auditLastTitle.replace(/[^a-zA-Z0-9_\-]/g, '_') }),
-      });
-      if (!res.ok) { toast('Export failed', 'error'); return; }
-      const blob = await res.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${auditLastTitle.replace(/[^a-zA-Z0-9_\-\s]/g, '_')}.xlsx`;
-      a.click();
-      toast('Excel exported!', 'success');
+      if(!auditLastSQL){toast('No query','error');return;}
+      const res = await fetch('/api/export-excel', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sql:auditLastSQL,filename:auditLastTitle.replace(/[^a-zA-Z0-9_\-]/g,'_')}) });
+      if(!res.ok){toast('Export failed','error');return;}
+      const blob=await res.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${auditLastTitle.replace(/[^a-zA-Z0-9_\-\s]/g,'_')}.xlsx`;a.click();
+      toast('Excel exported!','success');
     }
-
     async function exportAuditCustomExcel() {
-      const sql = document.getElementById('audit-sql-input').value.trim();
-      if (!sql) { toast('Enter SQL first', 'error'); return; }
-      const res = await fetch('/api/export-excel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql, filename: 'custom_query' }),
-      });
-      if (!res.ok) { toast('Export failed', 'error'); return; }
-      const blob = await res.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'custom_query.xlsx';
-      a.click();
-      toast('Excel exported!', 'success');
+      const sql=getAuditSQLText().trim();if(!sql){toast('Enter SQL','error');return;}
+      const res=await fetch('/api/export-excel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sql,filename:'custom_query'})});
+      if(!res.ok){toast('Export failed','error');return;}
+      const blob=await res.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='custom_query.xlsx';a.click();
+      toast('Excel exported!','success');
     }
-
-    // Export ALL audit queries to one multi-sheet Excel
     async function exportAllAuditExcel() {
-      const queries = auditQueries.map(q => ({ name: q.key, sheetName: q.key.substring(0, 31) }));
-      // Need SQL for each - fetch from server
-      const full = await Promise.all(queries.map(async q => {
-        const res = await fetch(`/api/audit-queries/${q.name}`).then(r => r.json());
-        return { name: q.name, sql: res.sql, sheetName: q.sheetName };
-      }));
-
-      toast('Generating Excel with all queries...', 'success');
-      const res = await fetch('/api/export-excel-multi', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ queries: full }),
-      });
-      if (!res.ok) { toast('Export failed', 'error'); return; }
-      const blob = await res.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'jira_audit_report_full.xlsx';
-      a.click();
-      toast('Full audit report exported!', 'success');
+      toast('Generating Excel with all queries...','success');
+      const full=await Promise.all(auditQueries.map(async q=>{const r=await fetch(`/api/audit-queries/${q.key}`).then(r=>r.json());return{name:q.key,sql:r.sql,sheetName:q.key.substring(0,31)};}));
+      const res=await fetch('/api/export-excel-multi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({queries:full})});
+      if(!res.ok){toast('Export failed','error');return;}
+      const blob=await res.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='jira_audit_report_full.xlsx';a.click();
+      toast('Full report exported!','success');
     }
 
-    // Export SELECTED audit queries to Excel
-    async function exportSelectedAuditExcel() {
-      if (auditSelectedKeys.size === 0) { toast('Select queries first (click checkboxes)', 'error'); return; }
-      const keys = [...auditSelectedKeys];
-      const full = await Promise.all(keys.map(async key => {
-        const res = await fetch(`/api/audit-queries/${key}`).then(r => r.json());
-        return { name: key, sql: res.sql, sheetName: key.substring(0, 31) };
-      }));
-
-      toast(`Exporting ${keys.length} queries...`, 'success');
-      const res = await fetch('/api/export-excel-multi', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ queries: full }),
-      });
-      if (!res.ok) { toast('Export failed', 'error'); return; }
-      const blob = await res.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'jira_audit_selected.xlsx';
-      a.click();
-      toast('Selected queries exported!', 'success');
-    }
+    // ── Init CodeMirror editors ──
+    window._initEditors = function() {
+      if (!window._cmReady || !window._createEditor) return;
+      cmCustomSQL = window._createEditor('cm-custom-sql',
+        `SELECT\n  project_key,\n  COUNT(*) as total,\n  SUM(CASE WHEN status_category = 'Done' THEN 1 ELSE 0 END) as done,\n  SUM(CASE WHEN status_category != 'Done' THEN 1 ELSE 0 END) as open\nFROM issues\nGROUP BY project_key\nORDER BY total DESC`,
+        runCustomSQL
+      );
+      cmAuditSQL = window._createEditor('cm-audit-sql', 'SELECT * FROM issues WHERE ... LIMIT 50', runAuditCustomSQL);
+    };
 
     // ── Init ──
-    let jiraBaseUrl = '';
     loadStats();
-    fetch('/api/settings').then(r => r.json()).then(r => {
+    fetch('/api/settings').then(r=>r.json()).then(r=>{
       updateConnBadge(r.configured);
-      jiraBaseUrl = (r.settings.JIRA_BASE_URL || '').replace(/\/+$/, '');
+      jiraBaseUrl = (r.settings.JIRA_BASE_URL||'').replace(/\/+$/,'');
     });
+    // Try init editors now (in case module already loaded)
+    if (window._cmReady) window._initEditors();
   </script>
 </body>
 </html>
