@@ -8,6 +8,8 @@
  *   node index.js --issues-only      # Only collect issues
  *   node index.js --meta-only        # Only collect metadata & security data
  *   node index.js --audit-only       # Only collect audit log
+ *   node index.js --resume           # Resume interrupted collection
+ *   node index.js --issues-only --resume  # Resume issues only
  *   node src/queries.js [query]      # Run analysis queries
  *   node src/queries.js --all        # Run all queries
  *   node src/export.js [csv|json]    # Export to CSV/JSON
@@ -33,6 +35,7 @@ async function main() {
   const issuesOnly = args.includes('--issues-only');
   const metaOnly = args.includes('--meta-only');
   const auditOnly = args.includes('--audit-only');
+  const resume = args.includes('--resume');
 
   console.log('\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557');
   console.log('\u2551   Jira Data Collector for Security Audit     \u2551');
@@ -57,7 +60,7 @@ async function main() {
     if (auditOnly) {
       await collectAuditLog(client, db);
     } else if (issuesOnly) {
-      totalIssues = await collectIssues(client, db, jql);
+      totalIssues = await collectIssues(client, db, jql, { resume });
     } else if (metaOnly) {
       await collectMetadata(client, db);
       const projects = await collectProjects(client, db);
@@ -68,7 +71,7 @@ async function main() {
       await collectMetadata(client, db);
       const projects = await collectProjects(client, db);
       await collectUsers(client, db);
-      totalIssues = await collectIssues(client, db, jql);
+      totalIssues = await collectIssues(client, db, jql, { resume });
       await collectBoardsAndSprints(client, db);
       await collectSecurityData(client, db, projects);
       await collectAuditLog(client, db);

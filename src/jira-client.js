@@ -58,8 +58,8 @@ class JiraClient {
   }
 
   // --- Issue Search (paginated) ---
-  async *searchIssues(jql, fields, expand) {
-    let startAt = 0;
+  async *searchIssues(jql, fields, expand, initialStartAt = 0) {
+    let startAt = initialStartAt;
     const maxResults = this.pageSize;
     const defaultFields = [
       'summary', 'description', 'issuetype', 'status', 'priority',

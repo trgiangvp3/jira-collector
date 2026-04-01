@@ -167,8 +167,19 @@ async function collectUsers(client, db) {
 // ============================================================
 // Collect issues with all details
 // ============================================================
-async function collectIssues(client, db, jql) {
+async function collectIssues(client, db, jql, { resume = false } = {}) {
   console.log('\n=== Collecting issues ===');
+
+  // Resume: count existing issues and skip ahead (with 1000-record overlap for safety)
+  let resumeStartAt = 0;
+  if (resume) {
+    const row = db.prepare('SELECT COUNT(*) as cnt FROM issues').get();
+    const existing = row?.cnt || 0;
+    if (existing > 0) {
+      resumeStartAt = Math.max(0, existing - 1000);
+      console.log(`  [RESUME] ${existing} issues in DB, resuming from offset ${resumeStartAt} (1000 overlap for safety)`);
+    }
+  }
 
   const insertIssue = db.prepare(`INSERT OR REPLACE INTO issues
     (id, key, project_key, issue_type_id, issue_type_name,
@@ -219,12 +230,16 @@ async function collectIssues(client, db, jql) {
   // Clear changelog_items before re-collecting (no natural PK)
   // We'll handle this per-issue
 
-  let totalIssues = 0;
+  let totalIssues = resumeStartAt;
   let pageNum = 0;
 
-  for await (const page of client.searchIssues(jql)) {
+  for await (const page of client.searchIssues(jql, undefined, undefined, resumeStartAt)) {
     if (pageNum === 0) {
-      console.log(`  Total issues to collect: ${page.total}`);
+      console.log(`  Total issues: ${page.total}${resumeStartAt > 0 ? ` (resuming from #${resumeStartAt})` : ''}`);
+      if (resumeStartAt >= page.total) {
+        console.log('  [RESUME] All issues already collected, nothing to do.');
+        return totalIssues;
+      }
     }
     pageNum++;
     const fieldNames = page.names || {};
