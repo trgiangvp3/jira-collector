@@ -1,61 +1,79 @@
 /**
- * Audit SQL Queries - Loaded from individual .sql files in /queries directory
+ * Audit SQL Queries - Per-workspace, loaded from .sql files
  *
- * Each .sql file has metadata as a JSON comment on the first line:
- *   -- {"key":"acc-01-inactive-users","title":"...","category":"Access Control","description":"..."}
+ * Template queries live in /queries (project root).
+ * Each workspace gets its own copy in data/<workspace-id>/queries/.
+ * On first activation, templates are copied to workspace dir.
+ *
+ * File format:
+ *   -- {"key":"acc-01","title":"...","category":"Access Control","description":"..."}
  *   SELECT ...
- *
- * To add a new query: create a new .sql file in /queries with the metadata comment.
- * To edit: modify the .sql file directly. Changes take effect on server restart.
  */
 const fs = require('fs');
 const path = require('path');
 
-const QUERIES_DIR = path.join(__dirname, '..', 'queries');
+const TEMPLATE_DIR = path.join(__dirname, '..', 'queries');
 
-function loadAuditQueries() {
+function loadFromDir(dir) {
   const queries = {};
+  if (!fs.existsSync(dir)) return queries;
 
-  if (!fs.existsSync(QUERIES_DIR)) {
-    console.warn('[AUDIT] Queries directory not found:', QUERIES_DIR);
-    return queries;
-  }
-
-  const files = fs.readdirSync(QUERIES_DIR)
-    .filter(f => f.endsWith('.sql'))
-    .sort();
-
+  const files = fs.readdirSync(dir).filter(f => f.endsWith('.sql')).sort();
   for (const file of files) {
     try {
-      const content = fs.readFileSync(path.join(QUERIES_DIR, file), 'utf-8');
+      const content = fs.readFileSync(path.join(dir, file), 'utf-8');
       const firstLine = content.split('\n')[0];
-
-      // Parse metadata from first line: -- { ... }
       const metaMatch = firstLine.match(/^--\s*(\{.*\})\s*$/);
-      if (!metaMatch) {
-        console.warn(`[AUDIT] Skipping ${file}: no metadata comment on first line`);
-        continue;
-      }
+      if (!metaMatch) continue;
 
       const meta = JSON.parse(metaMatch[1]);
       const sql = content.substring(firstLine.length + 1).trim();
-
       const key = meta.key || file.replace('.sql', '');
       queries[key] = {
         title: meta.title || key,
         category: meta.category || 'Uncategorized',
         description: meta.description || '',
         sql,
+        file,
       };
-    } catch (err) {
-      console.warn(`[AUDIT] Error loading ${file}:`, err.message);
-    }
+    } catch { /* skip bad files */ }
   }
-
-  console.log(`[AUDIT] Loaded ${Object.keys(queries).length} queries from ${QUERIES_DIR}`);
   return queries;
 }
 
-const AUDIT_QUERIES = loadAuditQueries();
+/**
+ * Ensure workspace has its own queries dir, seeded from templates.
+ */
+function ensureWorkspaceQueries(workspaceQueriesDir) {
+  if (!fs.existsSync(workspaceQueriesDir)) {
+    fs.mkdirSync(workspaceQueriesDir, { recursive: true });
+    // Copy templates
+    if (fs.existsSync(TEMPLATE_DIR)) {
+      const files = fs.readdirSync(TEMPLATE_DIR).filter(f => f.endsWith('.sql'));
+      for (const file of files) {
+        fs.copyFileSync(path.join(TEMPLATE_DIR, file), path.join(workspaceQueriesDir, file));
+      }
+      console.log(`[AUDIT] Seeded ${files.length} template queries to ${workspaceQueriesDir}`);
+    }
+  }
+}
 
-module.exports = { AUDIT_QUERIES };
+/**
+ * Load audit queries for a workspace.
+ * @param {string} workspaceQueriesDir - e.g. data/<ws-id>/queries
+ * @returns {Object} queries map
+ */
+function loadAuditQueries(workspaceQueriesDir) {
+  if (workspaceQueriesDir) {
+    ensureWorkspaceQueries(workspaceQueriesDir);
+    const q = loadFromDir(workspaceQueriesDir);
+    console.log(`[AUDIT] Loaded ${Object.keys(q).length} queries from ${workspaceQueriesDir}`);
+    return q;
+  }
+  // Fallback: load from template dir
+  const q = loadFromDir(TEMPLATE_DIR);
+  console.log(`[AUDIT] Loaded ${Object.keys(q).length} queries from templates`);
+  return q;
+}
+
+module.exports = { loadAuditQueries, ensureWorkspaceQueries, TEMPLATE_DIR };

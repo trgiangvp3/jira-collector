@@ -12,7 +12,7 @@ const { initSchema, getDb, closeDb, closeAll } = require('./src/db');
 const JiraClient = require('./src/jira-client');
 const collectors = require('./src/collectors');
 const { QUERIES } = require('./src/queries');
-const { AUDIT_QUERIES } = require('./src/audit-queries');
+const { loadAuditQueries } = require('./src/audit-queries');
 const workspaceManager = require('./src/workspace-manager');
 
 const app = express();
@@ -51,6 +51,23 @@ function addLog(text) {
 // ── Helper to get active workspace id ──
 function getActiveWorkspaceId() {
   return workspaceManager.getActiveId();
+}
+
+// ── Per-workspace audit queries ──
+let AUDIT_QUERIES = {};
+
+function getWorkspaceQueriesDir(wsId) {
+  if (!wsId) return null;
+  const ws = workspaceManager.get(wsId);
+  if (!ws) return null;
+  // data/<workspace-id>/queries/
+  return path.resolve(path.join(__dirname, 'data', wsId, 'queries'));
+}
+
+function reloadAuditQueries() {
+  const wsId = getActiveWorkspaceId();
+  const dir = getWorkspaceQueriesDir(wsId);
+  AUDIT_QUERIES = loadAuditQueries(dir);
 }
 
 function maskWorkspace(ws) {
@@ -131,6 +148,7 @@ app.post('/api/workspaces/:id/activate', async (req, res) => {
     return res.status(500).json({ error: `Failed to init DB: ${err.message}` });
   }
 
+  reloadAuditQueries();
   broadcast({ type: 'workspace-changed', workspaceId: id });
   res.json({ ok: true });
 });
@@ -384,10 +402,52 @@ app.get('/api/audit-queries/:name', (req, res) => {
     const activeId = getActiveWorkspaceId();
     const db = getDb(activeId);
     const rows = db.prepare(query.sql).all();
-    res.json({ title: query.title, description: query.description, category: query.category, sql: query.sql.trim(), rows, count: rows.length });
+    res.json({ title: query.title, description: query.description, category: query.category, sql: query.sql.trim(), rows, count: rows.length, file: query.file });
   } catch (err) {
     res.json({ title: query.title, error: err.message, rows: [], count: 0 });
   }
+});
+
+// ── Audit Query File CRUD ──────────────────────────────
+// Save/update a query file for the active workspace
+app.put('/api/audit-queries/:name', (req, res) => {
+  const wsId = getActiveWorkspaceId();
+  const dir = getWorkspaceQueriesDir(wsId);
+  if (!dir) return res.status(400).json({ error: 'No active workspace' });
+
+  const { title, category, description, sql } = req.body;
+  const key = req.params.name;
+  const meta = JSON.stringify({ key, title: title || key, category: category || 'Custom', description: description || '' });
+  const content = `-- ${meta}\n${(sql || '').trim()}\n`;
+
+  const filename = key.replace(/[^a-zA-Z0-9_\-]/g, '-') + '.sql';
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, filename), content, 'utf-8');
+
+  reloadAuditQueries();
+  res.json({ ok: true, key });
+});
+
+// Delete a query file
+app.delete('/api/audit-queries/:name', (req, res) => {
+  const wsId = getActiveWorkspaceId();
+  const dir = getWorkspaceQueriesDir(wsId);
+  if (!dir) return res.status(400).json({ error: 'No active workspace' });
+
+  const query = AUDIT_QUERIES[req.params.name];
+  if (!query?.file) return res.status(404).json({ error: 'Query not found' });
+
+  const filePath = path.join(dir, query.file);
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+  reloadAuditQueries();
+  res.json({ ok: true });
+});
+
+// Reload queries (e.g. after manually editing files)
+app.post('/api/audit-queries/reload', (req, res) => {
+  reloadAuditQueries();
+  res.json({ ok: true, count: Object.keys(AUDIT_QUERIES).length });
 });
 
 // ── Excel Export ───────────────────────────────────────
@@ -562,6 +622,9 @@ const PORT = process.env.PORT || 3000;
   } else {
     console.log('[WS] No active workspace. Create one via the UI.');
   }
+
+  // Load audit queries for active workspace
+  reloadAuditQueries();
 
   app.listen(PORT, () => {
     console.log(`\n  Jira Collector UI: http://localhost:${PORT}\n`);
