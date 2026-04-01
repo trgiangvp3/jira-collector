@@ -1,12 +1,16 @@
 const axios = require('axios');
 
 class JiraClient {
-  constructor() {
-    const baseURL = process.env.JIRA_BASE_URL;
+  constructor(config = {}) {
+    const baseURL = config.JIRA_BASE_URL || process.env.JIRA_BASE_URL;
     if (!baseURL) throw new Error('JIRA_BASE_URL is required');
 
+    const pat = config.JIRA_PAT || process.env.JIRA_PAT;
+    const username = config.JIRA_USERNAME || process.env.JIRA_USERNAME;
+    const password = config.JIRA_PASSWORD || process.env.JIRA_PASSWORD;
+
     const headers = { 'Content-Type': 'application/json' };
-    const config = {
+    const axiosConfig = {
       baseURL,
       headers,
       timeout: 60000,
@@ -15,19 +19,19 @@ class JiraClient {
     };
 
     // PAT takes priority over basic auth
-    if (process.env.JIRA_PAT) {
-      headers['Authorization'] = `Bearer ${process.env.JIRA_PAT}`;
-    } else if (process.env.JIRA_USERNAME && process.env.JIRA_PASSWORD) {
-      config.auth = {
-        username: process.env.JIRA_USERNAME,
-        password: process.env.JIRA_PASSWORD,
+    if (pat) {
+      headers['Authorization'] = `Bearer ${pat}`;
+    } else if (username && password) {
+      axiosConfig.auth = {
+        username,
+        password,
       };
     } else {
       throw new Error('Either JIRA_PAT or JIRA_USERNAME/JIRA_PASSWORD required');
     }
 
-    this.client = axios.create(config);
-    this.pageSize = parseInt(process.env.PAGE_SIZE) || 100;
+    this.client = axios.create(axiosConfig);
+    this.pageSize = parseInt(config.PAGE_SIZE || process.env.PAGE_SIZE) || 100;
   }
 
   async get(url, params = {}) {

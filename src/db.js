@@ -2,24 +2,25 @@ const initSqlJs = require('sql.js');
 const fs = require('fs');
 const path = require('path');
 
-const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'jira_data.db');
+// ── Registry: Map<workspaceId, { wrapper, dbPath, saveTimer }> ──
+const registry = new Map();
 
-let db = null;
-let sqliteDb = null;
-let saveTimer = null;
+// Shared SQL.js instance (loaded once)
+let SQL = null;
 
 /**
  * Wrapper that provides a better-sqlite3 compatible API on top of sql.js
  * So all existing code (collectors, queries, server) works without changes.
  */
 class SqlJsWrapper {
-  constructor(rawDb) {
+  constructor(rawDb, workspaceId) {
     this.rawDb = rawDb;
+    this._wsId = workspaceId;
   }
 
   exec(sql) {
     this.rawDb.run(sql);
-    scheduleSave();
+    scheduleSave(this._wsId);
   }
 
   pragma(str) {
@@ -27,16 +28,17 @@ class SqlJsWrapper {
   }
 
   prepare(sql) {
-    return new StatementWrapper(this.rawDb, sql);
+    return new StatementWrapper(this.rawDb, sql, this._wsId);
   }
 
   transaction(fn) {
+    const wsId = this._wsId;
     return (...args) => {
       this.rawDb.run('BEGIN TRANSACTION');
       try {
         const result = fn(...args);
         this.rawDb.run('COMMIT');
-        scheduleSave();
+        scheduleSave(wsId);
         return result;
       } catch (err) {
         this.rawDb.run('ROLLBACK');
@@ -46,21 +48,22 @@ class SqlJsWrapper {
   }
 
   close() {
-    flushSave();
+    flushSave(this._wsId);
     this.rawDb.close();
   }
 }
 
 class StatementWrapper {
-  constructor(rawDb, sql) {
+  constructor(rawDb, sql, wsId) {
     this.rawDb = rawDb;
     this.sql = sql;
+    this._wsId = wsId;
   }
 
   run(...params) {
     const flat = flattenParams(params);
     this.rawDb.run(this.sql, flat);
-    scheduleSave();
+    scheduleSave(this._wsId);
     const info = {
       changes: this.rawDb.getRowsModified(),
       lastInsertRowid: getLastInsertRowid(this.rawDb),
@@ -127,40 +130,62 @@ function getLastInsertRowid(rawDb) {
   }
 }
 
-// Auto-save: debounce writes to disk (every 2 seconds after changes)
-function scheduleSave() {
-  if (saveTimer) return;
-  saveTimer = setTimeout(() => {
-    flushSave();
+// ── Save scheduling per workspace ──
+
+function scheduleSave(wsId) {
+  const entry = registry.get(wsId);
+  if (!entry || entry.saveTimer) return;
+  entry.saveTimer = setTimeout(() => {
+    flushSave(wsId);
   }, 2000);
 }
 
-function flushSave() {
-  if (saveTimer) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
+function flushSave(wsId) {
+  const entry = registry.get(wsId);
+  if (!entry) return;
+  if (entry.saveTimer) {
+    clearTimeout(entry.saveTimer);
+    entry.saveTimer = null;
   }
-  if (sqliteDb) {
+  if (entry.wrapper) {
     try {
-      const data = sqliteDb.rawDb.export();
+      const data = entry.wrapper.rawDb.export();
       const buffer = Buffer.from(data);
-      fs.writeFileSync(DB_PATH, buffer);
+      // Ensure directory exists
+      const dir = path.dirname(entry.dbPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(entry.dbPath, buffer);
     } catch (err) {
-      console.error('[DB] Save error:', err.message);
+      console.error(`[DB:${wsId}] Save error:`, err.message);
     }
   }
 }
 
-// ── Public API (same as before) ──
+// ── Public API ──
 
-async function getDbAsync() {
-  if (db) return db;
+/**
+ * Initialize a workspace's database at the given path and run schema DDL.
+ * @param {string} workspaceId - unique workspace identifier
+ * @param {string} dbPath - absolute path to the .db file
+ */
+async function initSchema(workspaceId, dbPath) {
+  // If already initialized for this workspace, return existing
+  if (registry.has(workspaceId)) {
+    return registry.get(workspaceId).wrapper;
+  }
 
-  const SQL = await initSqlJs();
+  if (!SQL) {
+    SQL = await initSqlJs();
+  }
+
+  // Resolve path; ensure directory exists
+  const resolvedPath = path.resolve(dbPath);
+  const dir = path.dirname(resolvedPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
   let rawDb;
-  if (fs.existsSync(DB_PATH)) {
-    const fileBuffer = fs.readFileSync(DB_PATH);
+  if (fs.existsSync(resolvedPath)) {
+    const fileBuffer = fs.readFileSync(resolvedPath);
     rawDb = new SQL.Database(fileBuffer);
   } else {
     rawDb = new SQL.Database();
@@ -168,20 +193,11 @@ async function getDbAsync() {
 
   rawDb.run('PRAGMA foreign_keys = ON');
 
-  sqliteDb = db = new SqlJsWrapper(rawDb);
-  return db;
-}
+  const wrapper = new SqlJsWrapper(rawDb, workspaceId);
+  registry.set(workspaceId, { wrapper, dbPath: resolvedPath, saveTimer: null });
 
-// Synchronous getter (only works after first init)
-function getDb() {
-  if (!db) throw new Error('Database not initialized. Call initSchema() first.');
-  return db;
-}
-
-async function initSchema() {
-  const dbInstance = await getDbAsync();
-
-  dbInstance.exec(`
+  // Run schema DDL
+  wrapper.exec(`
     -- Metadata: track collection runs
     CREATE TABLE IF NOT EXISTS collection_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -590,17 +606,44 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_audit_log_author ON audit_log(author_key);
   `);
 
-  console.log('[DB] Schema initialized successfully');
-  return dbInstance;
+  console.log(`[DB:${workspaceId}] Schema initialized at ${resolvedPath}`);
+  return wrapper;
 }
 
-function closeDb() {
-  flushSave();
-  if (db) {
-    db.close();
-    db = null;
-    sqliteDb = null;
+/**
+ * Get the DB wrapper for a workspace. Throws if not initialized.
+ */
+function getDb(workspaceId) {
+  const entry = registry.get(workspaceId);
+  if (!entry) throw new Error(`Database not initialized for workspace "${workspaceId}". Call initSchema() first.`);
+  return entry.wrapper;
+}
+
+/**
+ * Close a single workspace's DB.
+ */
+function closeDb(workspaceId) {
+  const entry = registry.get(workspaceId);
+  if (!entry) return;
+  flushSave(workspaceId);
+  try { entry.wrapper.close(); } catch { /* ignore */ }
+  registry.delete(workspaceId);
+}
+
+/**
+ * Close all open databases.
+ */
+function closeAll() {
+  for (const wsId of registry.keys()) {
+    closeDb(wsId);
   }
 }
 
-module.exports = { getDb, initSchema, closeDb };
+/**
+ * Check whether a workspace DB is currently open.
+ */
+function isOpen(workspaceId) {
+  return registry.has(workspaceId);
+}
+
+module.exports = { getDb, initSchema, closeDb, closeAll, isOpen };

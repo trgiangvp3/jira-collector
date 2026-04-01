@@ -3,7 +3,10 @@
  * Run with: node src/queries.js [query-name]
  */
 require('dotenv').config();
+const path = require('path');
 const { getDb, initSchema, closeDb } = require('./db');
+
+const CLI_WORKSPACE_ID = '__cli_queries__';
 
 const QUERIES = {
   // ====== OVERVIEW ======
@@ -301,7 +304,8 @@ const QUERIES = {
 };
 
 async function runQuery(name) {
-  const db = await initSchema();
+  const dbPath = process.env.DB_PATH || path.join(process.cwd(), 'jira_data.db');
+  const db = await initSchema(CLI_WORKSPACE_ID, dbPath);
   const query = QUERIES[name];
   if (!query) {
     console.log('Available queries:');
@@ -321,12 +325,13 @@ async function runQuery(name) {
     console.log(`\n${rows.length} rows returned`);
   }
 
-  closeDb();
+  closeDb(CLI_WORKSPACE_ID);
 }
 
 // Run all queries and export to a report
 async function runAllQueries() {
-  const db = await initSchema();
+  const dbPath = process.env.DB_PATH || path.join(process.cwd(), 'jira_data.db');
+  const db = await initSchema(CLI_WORKSPACE_ID, dbPath);
   const results = {};
 
   for (const [name, query] of Object.entries(QUERIES)) {
@@ -340,7 +345,7 @@ async function runAllQueries() {
     }
   }
 
-  closeDb();
+  closeDb(CLI_WORKSPACE_ID);
   return results;
 }
 

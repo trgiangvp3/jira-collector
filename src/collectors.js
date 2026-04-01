@@ -1,10 +1,7 @@
-const { getDb } = require('./db');
-
 // ============================================================
 // Helper: upsert with conflict handling
 // ============================================================
-function upsertRow(table, data, conflictColumn) {
-  const db = getDb();
+function upsertRow(db, table, data, conflictColumn) {
   const columns = Object.keys(data);
   const placeholders = columns.map(() => '?').join(', ');
   const updates = columns.map(c => `${c} = excluded.${c}`).join(', ');
@@ -16,8 +13,7 @@ function upsertRow(table, data, conflictColumn) {
 // ============================================================
 // Collect metadata (projects, types, statuses, etc.)
 // ============================================================
-async function collectMetadata(client) {
-  const db = getDb();
+async function collectMetadata(client, db) {
   console.log('\n=== Collecting metadata ===');
 
   // Server info
@@ -80,9 +76,8 @@ async function collectMetadata(client) {
 // ============================================================
 // Collect projects
 // ============================================================
-async function collectProjects(client) {
+async function collectProjects(client, db) {
   console.log('\n=== Collecting projects ===');
-  const db = getDb();
   const projects = await client.getProjects();
 
   const insertProject = db.prepare(`INSERT OR REPLACE INTO projects
@@ -140,9 +135,8 @@ async function collectProjects(client) {
 // ============================================================
 // Collect users
 // ============================================================
-async function collectUsers(client) {
+async function collectUsers(client, db) {
   console.log('\n=== Collecting users ===');
-  const db = getDb();
   const insertUser = db.prepare(`INSERT OR REPLACE INTO users
     (account_key, username, display_name, email, active, time_zone, raw_json)
     VALUES (?, ?, ?, ?, ?, ?, ?)`);
@@ -173,9 +167,8 @@ async function collectUsers(client) {
 // ============================================================
 // Collect issues with all details
 // ============================================================
-async function collectIssues(client, jql) {
+async function collectIssues(client, db, jql) {
   console.log('\n=== Collecting issues ===');
-  const db = getDb();
 
   const insertIssue = db.prepare(`INSERT OR REPLACE INTO issues
     (id, key, project_key, issue_type_id, issue_type_name,
@@ -433,9 +426,8 @@ async function collectIssues(client, jql) {
 // ============================================================
 // Collect boards and sprints
 // ============================================================
-async function collectBoardsAndSprints(client) {
+async function collectBoardsAndSprints(client, db) {
   console.log('\n=== Collecting boards & sprints ===');
-  const db = getDb();
 
   const insertBoard = db.prepare(`INSERT OR REPLACE INTO boards
     (id, name, type, project_key, raw_json) VALUES (?, ?, ?, ?, ?)`);
@@ -471,9 +463,8 @@ async function collectBoardsAndSprints(client) {
 // ============================================================
 // Collect security/admin data
 // ============================================================
-async function collectSecurityData(client, projects) {
+async function collectSecurityData(client, db, projects) {
   console.log('\n=== Collecting security & admin data ===');
-  const db = getDb();
 
   // Permission schemes
   console.log('[SEC] Permission schemes...');
@@ -575,9 +566,8 @@ async function collectSecurityData(client, projects) {
 // ============================================================
 // Collect audit log
 // ============================================================
-async function collectAuditLog(client) {
+async function collectAuditLog(client, db) {
   console.log('\n=== Collecting audit log ===');
-  const db = getDb();
   const insertAudit = db.prepare(`INSERT INTO audit_log
     (summary, category, event_source, author_key, author_name,
      object_name, object_type, created, raw_json)

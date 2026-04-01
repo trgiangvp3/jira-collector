@@ -9,6 +9,8 @@ const { getDb, initSchema, closeDb } = require('./db');
 const fs = require('fs');
 const path = require('path');
 
+const CLI_WORKSPACE_ID = '__cli_export__';
+
 const EXPORT_TABLES = [
   'projects', 'issues', 'users', 'comments', 'worklogs',
   'changelogs', 'changelog_items', 'attachments', 'issue_links',
@@ -54,7 +56,8 @@ function exportTable(db, table, format, outputDir) {
 }
 
 async function exportAll(format = 'csv', outputDir = './export') {
-  const db = await initSchema();
+  const dbPath = process.env.DB_PATH || path.join(process.cwd(), 'jira_data.db');
+  const db = await initSchema(CLI_WORKSPACE_ID, dbPath);
 
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
@@ -98,7 +101,7 @@ async function exportAll(format = 'csv', outputDir = './export') {
     }
   }
 
-  closeDb();
+  closeDb(CLI_WORKSPACE_ID);
   console.log('\nExport complete!');
 }
 

@@ -1,0 +1,55 @@
+-- {"key":"i5-01-hardening-issues","title":"[I.5] Tất cả issues liên quan Hardening / Cấu hình bảo mật","category":"I.5 - Config Baseline","description":"Tìm bằng chứng về hardening, baseline config, security configuration cho ứng dụng (web, mobile, API, desktop)."}
+SELECT
+  key, project_key, issue_type_name, summary,
+  priority_name, status_name, status_category,
+  assignee_name, reporter_name,
+  created, resolved, due_date,
+  CAST(julianday('now') - julianday(created) AS INTEGER) as age_days,
+  labels
+FROM issues
+WHERE LOWER(summary) LIKE '%hardening%'
+   OR LOWER(summary) LIKE '%baseline%'
+   OR LOWER(summary) LIKE '%security config%'
+   OR LOWER(summary) LIKE '%cấu hình bảo mật%'
+   OR LOWER(summary) LIKE '%cau hinh bao mat%'
+   OR LOWER(summary) LIKE '%tiêu chuẩn cấu hình%'
+   OR LOWER(summary) LIKE '%tieu chuan cau hinh%'
+   OR LOWER(summary) LIKE '%security standard%'
+   OR LOWER(summary) LIKE '%cis benchmark%'
+   OR LOWER(summary) LIKE '%stig%'
+   OR LOWER(summary) LIKE '%security header%'
+   OR LOWER(summary) LIKE '%http header%'
+   OR LOWER(summary) LIKE '%hsts%'
+   OR LOWER(summary) LIKE '%x-frame%'
+   OR LOWER(summary) LIKE '%x-content-type%'
+   OR LOWER(summary) LIKE '%content-security-policy%'
+   OR LOWER(summary) LIKE '%csp%'
+   OR LOWER(summary) LIKE '%cors%'
+   OR LOWER(summary) LIKE '%ssl config%'
+   OR LOWER(summary) LIKE '%tls config%'
+   OR LOWER(summary) LIKE '%cipher%'
+   OR LOWER(summary) LIKE '%certificate%'
+   OR LOWER(summary) LIKE '%disable%service%'
+   OR LOWER(summary) LIKE '%disable%port%'
+   OR LOWER(summary) LIKE '%unnecessary service%'
+   OR LOWER(summary) LIKE '%default password%'
+   OR LOWER(summary) LIKE '%default credential%'
+   OR LOWER(summary) LIKE '%password policy%'
+   OR LOWER(summary) LIKE '%session timeout%'
+   OR LOWER(summary) LIKE '%session management%'
+   OR LOWER(summary) LIKE '%cookie%secure%'
+   OR LOWER(summary) LIKE '%httponly%'
+   OR LOWER(summary) LIKE '%rate limit%'
+   OR LOWER(summary) LIKE '%brute force%'
+   OR LOWER(summary) LIKE '%lockout%'
+   OR LOWER(summary) LIKE '%error handling%'
+   OR LOWER(summary) LIKE '%stack trace%'
+   OR LOWER(summary) LIKE '%debug mode%'
+   OR LOWER(summary) LIKE '%information disclosure%'
+   OR LOWER(summary) LIKE '%version disclosure%'
+   OR LOWER(summary) LIKE '%server header%'
+   OR LOWER(summary) LIKE '%directory listing%'
+   OR LOWER(labels) LIKE '%hardening%'
+   OR LOWER(labels) LIKE '%baseline%'
+   OR LOWER(labels) LIKE '%config%'
+ORDER BY created DESC

@@ -3,6 +3,9 @@
     "allow": [
       "Bash(fuser -k 3000/tcp)",
       "Bash(node -e \":*)"
+    ],
+    "additionalDirectories": [
+      "d:\\github\\trgiangvp3\\jira-collector"
     ]
   }
 }

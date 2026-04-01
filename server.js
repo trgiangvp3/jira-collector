@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Jira Collector - Web UI Server
+ * Jira Collector - Web UI Server (multi-workspace)
  */
 require('dotenv').config();
 const express = require('express');
@@ -8,11 +8,12 @@ const path = require('path');
 const fs = require('fs');
 const expressWs = require('express-ws');
 const XLSX = require('xlsx');
-const { initSchema, getDb, closeDb } = require('./src/db');
+const { initSchema, getDb, closeDb, closeAll } = require('./src/db');
 const JiraClient = require('./src/jira-client');
 const collectors = require('./src/collectors');
 const { QUERIES } = require('./src/queries');
 const { AUDIT_QUERIES } = require('./src/audit-queries');
+const workspaceManager = require('./src/workspace-manager');
 
 const app = express();
 expressWs(app);
@@ -47,6 +48,19 @@ function addLog(text) {
   broadcast({ type: 'log', ...entry });
 }
 
+// ── Helper to get active workspace id ──
+function getActiveWorkspaceId() {
+  return workspaceManager.getActiveId();
+}
+
+function maskWorkspace(ws) {
+  if (!ws) return ws;
+  const masked = { ...ws };
+  if (masked.JIRA_PASSWORD) masked.JIRA_PASSWORD = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
+  if (masked.JIRA_PAT) masked.JIRA_PAT = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
+  return masked;
+}
+
 // ── WebSocket ──────────────────────────────────────────
 app.ws('/ws', (ws) => {
   wsClients.add(ws);
@@ -55,87 +69,134 @@ app.ws('/ws', (ws) => {
   ws.on('close', () => wsClients.delete(ws));
 });
 
-// ── Settings API ───────────────────────────────────────
-const ENV_PATH = path.join(__dirname, '.env');
+// ── Workspace CRUD API ────────────────────────────────
+app.get('/api/workspaces', (req, res) => {
+  const result = workspaceManager.list();
+  result.workspaces = result.workspaces.map(maskWorkspace);
+  res.json(result);
+});
 
-app.get('/api/settings', (req, res) => {
-  let settings = {
-    JIRA_BASE_URL: '',
-    JIRA_USERNAME: '',
-    JIRA_PASSWORD: '',
-    JIRA_PAT: '',
-    JIRA_JQL: '',
-    PAGE_SIZE: '100',
-    DB_PATH: '',
-  };
+app.post('/api/workspaces', async (req, res) => {
+  try {
+    const ws = workspaceManager.create(req.body);
+    // Initialize its DB
+    workspaceManager.ensureDataDir();
+    const dbFullPath = workspaceManager.resolveDbPath(ws);
+    await initSchema(ws.id, dbFullPath);
+    res.json({ ok: true, workspace: maskWorkspace(ws) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  if (fs.existsSync(ENV_PATH)) {
-    const content = fs.readFileSync(ENV_PATH, 'utf-8');
-    for (const line of content.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const eqIdx = trimmed.indexOf('=');
-      if (eqIdx === -1) continue;
-      const key = trimmed.substring(0, eqIdx).trim();
-      const val = trimmed.substring(eqIdx + 1).trim();
-      if (key in settings) {
-        settings[key] = val;
-      }
-    }
+app.put('/api/workspaces/:id', (req, res) => {
+  const existing = workspaceManager.get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Workspace not found' });
+
+  // Preserve passwords if masked values sent
+  const body = { ...req.body };
+  if (body.JIRA_PASSWORD && body.JIRA_PASSWORD.includes('\u2022')) {
+    body.JIRA_PASSWORD = existing.JIRA_PASSWORD;
+  }
+  if (body.JIRA_PAT && body.JIRA_PAT.includes('\u2022')) {
+    body.JIRA_PAT = existing.JIRA_PAT;
   }
 
-  // Mask password/PAT for display
-  const masked = { ...settings };
-  if (masked.JIRA_PASSWORD) masked.JIRA_PASSWORD = '••••••••';
-  if (masked.JIRA_PAT) masked.JIRA_PAT = '••••••••';
+  const updated = workspaceManager.update(req.params.id, body);
+  if (!updated) return res.status(404).json({ error: 'Workspace not found' });
+  res.json({ ok: true, workspace: maskWorkspace(updated) });
+});
 
-  res.json({ settings: masked, configured: !!settings.JIRA_BASE_URL });
+app.delete('/api/workspaces/:id', (req, res) => {
+  const id = req.params.id;
+  // Close its DB if open
+  closeDb(id);
+  const ok = workspaceManager.remove(id);
+  if (!ok) return res.status(404).json({ error: 'Workspace not found' });
+  res.json({ ok: true });
+});
+
+app.post('/api/workspaces/:id/activate', async (req, res) => {
+  const id = req.params.id;
+  const ws = workspaceManager.get(id);
+  if (!ws) return res.status(404).json({ error: 'Workspace not found' });
+
+  workspaceManager.setActive(id);
+
+  // Initialize its DB if not already open
+  try {
+    const dbFullPath = workspaceManager.resolveDbPath(ws);
+    await initSchema(id, dbFullPath);
+  } catch (err) {
+    return res.status(500).json({ error: `Failed to init DB: ${err.message}` });
+  }
+
+  broadcast({ type: 'workspace-changed', workspaceId: id });
+  res.json({ ok: true });
+});
+
+// ── Settings API (works with active workspace) ───────
+app.get('/api/settings', (req, res) => {
+  const ws = workspaceManager.getActive();
+  if (!ws) {
+    return res.json({
+      settings: { JIRA_BASE_URL: '', JIRA_USERNAME: '', JIRA_PASSWORD: '', JIRA_PAT: '', JIRA_JQL: '', PAGE_SIZE: '100', DB_PATH: '' },
+      configured: false,
+    });
+  }
+
+  const masked = maskWorkspace(ws);
+  res.json({
+    settings: {
+      JIRA_BASE_URL: masked.JIRA_BASE_URL || '',
+      JIRA_USERNAME: masked.JIRA_USERNAME || '',
+      JIRA_PASSWORD: masked.JIRA_PASSWORD || '',
+      JIRA_PAT: masked.JIRA_PAT || '',
+      JIRA_JQL: masked.JIRA_JQL || '',
+      PAGE_SIZE: masked.PAGE_SIZE || '100',
+      DB_PATH: masked.DB_PATH || '',
+      name: masked.name || '',
+    },
+    configured: !!ws.JIRA_BASE_URL,
+    workspaceId: ws.id,
+  });
 });
 
 app.post('/api/settings', (req, res) => {
-  const { JIRA_BASE_URL, JIRA_USERNAME, JIRA_PASSWORD, JIRA_PAT, JIRA_JQL, PAGE_SIZE, DB_PATH } = req.body;
-
-  // Read existing to preserve passwords if masked
-  let existing = {};
-  if (fs.existsSync(ENV_PATH)) {
-    const content = fs.readFileSync(ENV_PATH, 'utf-8');
-    for (const line of content.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const eqIdx = trimmed.indexOf('=');
-      if (eqIdx === -1) continue;
-      existing[trimmed.substring(0, eqIdx).trim()] = trimmed.substring(eqIdx + 1).trim();
-    }
+  const activeId = getActiveWorkspaceId();
+  if (!activeId) {
+    // Create a new workspace from settings
+    const ws = workspaceManager.create({
+      name: req.body.name || 'Default',
+      ...req.body,
+    });
+    // Init DB for this new workspace asynchronously
+    const dbFullPath = workspaceManager.resolveDbPath(ws);
+    initSchema(ws.id, dbFullPath).catch(err => console.error('[WS] DB init error:', err.message));
+    return res.json({ ok: true, workspaceId: ws.id });
   }
 
-  const env = {
-    JIRA_BASE_URL: JIRA_BASE_URL || '',
-    JIRA_USERNAME: JIRA_USERNAME || '',
-    JIRA_PASSWORD: (JIRA_PASSWORD && !JIRA_PASSWORD.includes('••')) ? JIRA_PASSWORD : (existing.JIRA_PASSWORD || ''),
-    JIRA_PAT: (JIRA_PAT && !JIRA_PAT.includes('••')) ? JIRA_PAT : (existing.JIRA_PAT || ''),
-    JIRA_JQL: JIRA_JQL || '',
-    PAGE_SIZE: PAGE_SIZE || '100',
-    DB_PATH: DB_PATH || '',
-  };
+  const existing = workspaceManager.get(activeId);
+  const body = { ...req.body };
 
-  const lines = Object.entries(env)
-    .filter(([, v]) => v)
-    .map(([k, v]) => `${k}=${v}`);
-
-  fs.writeFileSync(ENV_PATH, lines.join('\n') + '\n');
-
-  // Reload into process.env
-  for (const [k, v] of Object.entries(env)) {
-    if (v) process.env[k] = v;
+  // Preserve passwords if masked values sent
+  if (body.JIRA_PASSWORD && body.JIRA_PASSWORD.includes('\u2022')) {
+    body.JIRA_PASSWORD = existing.JIRA_PASSWORD;
+  }
+  if (body.JIRA_PAT && body.JIRA_PAT.includes('\u2022')) {
+    body.JIRA_PAT = existing.JIRA_PAT;
   }
 
-  res.json({ ok: true });
+  workspaceManager.update(activeId, body);
+  res.json({ ok: true, workspaceId: activeId });
 });
 
 // ── Test Connection ────────────────────────────────────
 app.post('/api/test-connection', async (req, res) => {
   try {
-    const client = new JiraClient();
+    const ws = workspaceManager.getActive();
+    const config = ws || {};
+    const client = new JiraClient(config);
     const info = await client.getServerInfo();
     res.json({ ok: true, info });
   } catch (err) {
@@ -189,12 +250,16 @@ async function runCollection(mode) {
   console.warn = (...args) => { const msg = args.join(' '); originalWarn(msg); addLog('[WARN] ' + msg); };
 
   try {
-    // Re-read .env
-    require('dotenv').config({ override: true });
+    // Capture active workspace at start time (switching mid-collection is safe)
+    const activeId = getActiveWorkspaceId();
+    if (!activeId) throw new Error('No active workspace. Create one in Settings first.');
 
-    const db = getDb();
-    const client = new JiraClient();
-    const jql = process.env.JIRA_JQL || null;
+    const wsConfig = workspaceManager.get(activeId);
+    if (!wsConfig) throw new Error('Active workspace config not found');
+
+    const db = getDb(activeId);
+    const client = new JiraClient(wsConfig);
+    const jql = wsConfig.JIRA_JQL || null;
 
     const setPhase = (phase) => {
       collectionState.phase = phase;
@@ -203,50 +268,50 @@ async function runCollection(mode) {
 
     if (mode === 'audit') {
       setPhase('audit_log');
-      await collectors.collectAuditLog(client);
+      await collectors.collectAuditLog(client, db);
     } else if (mode === 'issues') {
       setPhase('issues');
-      await collectors.collectIssues(client, jql);
+      await collectors.collectIssues(client, db, jql);
     } else if (mode === 'meta') {
       setPhase('metadata');
-      await collectors.collectMetadata(client);
+      await collectors.collectMetadata(client, db);
       if (collectionState.aborted) throw new Error('Aborted');
       setPhase('projects');
-      const projects = await collectors.collectProjects(client);
+      const projects = await collectors.collectProjects(client, db);
       if (collectionState.aborted) throw new Error('Aborted');
       setPhase('users');
-      await collectors.collectUsers(client);
+      await collectors.collectUsers(client, db);
       if (collectionState.aborted) throw new Error('Aborted');
       setPhase('security');
-      await collectors.collectSecurityData(client, projects);
+      await collectors.collectSecurityData(client, db, projects);
     } else {
       // Full
       setPhase('metadata');
-      await collectors.collectMetadata(client);
+      await collectors.collectMetadata(client, db);
       if (collectionState.aborted) throw new Error('Aborted');
 
       setPhase('projects');
-      const projects = await collectors.collectProjects(client);
+      const projects = await collectors.collectProjects(client, db);
       if (collectionState.aborted) throw new Error('Aborted');
 
       setPhase('users');
-      await collectors.collectUsers(client);
+      await collectors.collectUsers(client, db);
       if (collectionState.aborted) throw new Error('Aborted');
 
       setPhase('issues');
-      await collectors.collectIssues(client, jql);
+      await collectors.collectIssues(client, db, jql);
       if (collectionState.aborted) throw new Error('Aborted');
 
       setPhase('boards');
-      await collectors.collectBoardsAndSprints(client);
+      await collectors.collectBoardsAndSprints(client, db);
       if (collectionState.aborted) throw new Error('Aborted');
 
       setPhase('security');
-      await collectors.collectSecurityData(client, projects);
+      await collectors.collectSecurityData(client, db, projects);
       if (collectionState.aborted) throw new Error('Aborted');
 
       setPhase('audit_log');
-      await collectors.collectAuditLog(client);
+      await collectors.collectAuditLog(client, db);
     }
 
     collectionState.phase = 'completed';
@@ -275,7 +340,8 @@ app.get('/api/queries/:name', (req, res) => {
   if (!query) return res.status(404).json({ error: 'Query not found' });
 
   try {
-    const db = getDb();
+    const activeId = getActiveWorkspaceId();
+    const db = getDb(activeId);
     const rows = db.prepare(query.sql).all();
     res.json({ title: query.title, sql: query.sql.trim(), rows, count: rows.length });
   } catch (err) {
@@ -294,7 +360,8 @@ app.post('/api/queries/custom', (req, res) => {
   }
 
   try {
-    const db = getDb();
+    const activeId = getActiveWorkspaceId();
+    const db = getDb(activeId);
     const rows = db.prepare(sql).all();
     res.json({ rows, count: rows.length });
   } catch (err) {
@@ -314,7 +381,8 @@ app.get('/api/audit-queries/:name', (req, res) => {
   const query = AUDIT_QUERIES[req.params.name];
   if (!query) return res.status(404).json({ error: 'Query not found' });
   try {
-    const db = getDb();
+    const activeId = getActiveWorkspaceId();
+    const db = getDb(activeId);
     const rows = db.prepare(query.sql).all();
     res.json({ title: query.title, description: query.description, category: query.category, sql: query.sql.trim(), rows, count: rows.length });
   } catch (err) {
@@ -333,7 +401,8 @@ app.post('/api/export-excel', (req, res) => {
   }
 
   try {
-    const db = getDb();
+    const activeId = getActiveWorkspaceId();
+    const db = getDb(activeId);
     const rows = db.prepare(sql).all();
     // Remove raw_json column
     const cleaned = rows.map(({ raw_json, ...rest }) => rest);
@@ -365,7 +434,8 @@ app.post('/api/export-excel-multi', (req, res) => {
   if (!queries || !queries.length) return res.status(400).json({ error: 'No queries provided' });
 
   try {
-    const db = getDb();
+    const activeId = getActiveWorkspaceId();
+    const db = getDb(activeId);
     const wb = XLSX.utils.book_new();
 
     for (const q of queries) {
@@ -398,7 +468,8 @@ app.post('/api/export-excel-multi', (req, res) => {
 // ── DB Stats ───────────────────────────────────────────
 app.get('/api/stats', (req, res) => {
   try {
-    const db = getDb();
+    const activeId = getActiveWorkspaceId();
+    const db = getDb(activeId);
     const tables = db.prepare(`
       SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'
       ORDER BY name
@@ -411,9 +482,10 @@ app.get('/api/stats', (req, res) => {
     }
 
     // DB file size
-    const dbPath = process.env.DB_PATH || path.join(process.cwd(), 'jira_data.db');
+    const ws = workspaceManager.getActive();
+    const dbPath = ws ? workspaceManager.resolveDbPath(ws) : '';
     let fileSize = 0;
-    if (fs.existsSync(dbPath)) {
+    if (dbPath && fs.existsSync(dbPath)) {
       fileSize = fs.statSync(dbPath).size;
     }
 
@@ -432,7 +504,8 @@ app.get('/api/stats', (req, res) => {
 // ── DB Tables Schema ───────────────────────────────────
 app.get('/api/schema', (req, res) => {
   try {
-    const db = getDb();
+    const activeId = getActiveWorkspaceId();
+    const db = getDb(activeId);
     const tables = db.prepare(`
       SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'
       ORDER BY name
@@ -446,7 +519,8 @@ app.get('/api/schema', (req, res) => {
 // ── Export ──────────────────────────────────────────────
 app.get('/api/export/:table', (req, res) => {
   try {
-    const db = getDb();
+    const activeId = getActiveWorkspaceId();
+    const db = getDb(activeId);
     const table = req.params.table.replace(/[^a-zA-Z0-9_]/g, '');
     const format = req.query.format || 'json';
     const rows = db.prepare(`SELECT * FROM "${table}"`).all();
@@ -477,8 +551,23 @@ app.get('/api/export/:table', (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 (async () => {
-  await initSchema();
+  // Load workspaces and init active workspace's DB
+  const wsData = workspaceManager.load();
+  if (wsData.activeId && wsData.workspaces[wsData.activeId]) {
+    const activeWs = wsData.workspaces[wsData.activeId];
+    const dbFullPath = workspaceManager.resolveDbPath(activeWs);
+    workspaceManager.ensureDataDir();
+    await initSchema(wsData.activeId, dbFullPath);
+    console.log(`[WS] Active workspace: "${activeWs.name}" (${wsData.activeId})`);
+  } else {
+    console.log('[WS] No active workspace. Create one via the UI.');
+  }
+
   app.listen(PORT, () => {
     console.log(`\n  Jira Collector UI: http://localhost:${PORT}\n`);
   });
+
+  // Graceful shutdown
+  process.on('SIGINT', () => { closeAll(); process.exit(0); });
+  process.on('SIGTERM', () => { closeAll(); process.exit(0); });
 })();

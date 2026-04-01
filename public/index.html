@@ -68,7 +68,7 @@
       min-height: 100vh;
     }
 
-    /* ── Layout ── */
+    /* -- Layout -- */
     .app { display: flex; height: 100vh; }
     .sidebar {
       width: 220px; background: var(--surface); border-right: 1px solid var(--border);
@@ -77,6 +77,32 @@
     .sidebar-header { padding: 20px 16px; border-bottom: 1px solid var(--border); }
     .sidebar-header h1 { font-size: 16px; font-weight: 700; color: var(--accent); }
     .sidebar-header p { font-size: 11px; color: var(--text2); margin-top: 4px; }
+
+    /* -- Workspace selector -- */
+    .ws-selector {
+      padding: 8px; border-bottom: 1px solid var(--border);
+    }
+    .ws-selector label {
+      display: block; font-size: 10px; font-weight: 600; color: var(--text2);
+      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; padding: 0 4px;
+    }
+    .ws-selector-row {
+      display: flex; gap: 4px; align-items: center;
+    }
+    .ws-selector select {
+      flex: 1; padding: 6px 8px; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); font-size: 12px; outline: none; cursor: pointer;
+      min-width: 0;
+    }
+    .ws-selector select:focus { border-color: var(--accent); }
+    .ws-add-btn {
+      width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 6px;
+      background: var(--surface2); color: var(--accent); font-size: 16px; font-weight: 700;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: all 0.15s;
+    }
+    .ws-add-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
     .nav { flex: 1; padding: 8px; }
     .nav-item {
       display: flex; align-items: center; gap: 10px; padding: 10px 12px;
@@ -96,7 +122,7 @@
     .conn-badge.err { background: #3b1111; color: var(--red); }
     .conn-badge.unknown { background: var(--surface2); color: var(--text2); }
 
-    /* ── Cards & Forms ── */
+    /* -- Cards & Forms -- */
     .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
     .card-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
     .form-group { margin-bottom: 14px; }
@@ -110,7 +136,7 @@
     .form-row .form-group { flex: 1; }
     .form-hint { font-size: 11px; color: var(--text2); margin-top: 3px; }
 
-    /* ── Buttons ── */
+    /* -- Buttons -- */
     .btn {
       padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600;
       cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px;
@@ -126,13 +152,13 @@
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-group { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 
-    /* ── Stats Grid ── */
+    /* -- Stats Grid -- */
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
     .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; text-align: center; }
     .stat-value { font-size: 28px; font-weight: 700; color: var(--accent); }
     .stat-label { font-size: 12px; color: var(--text2); margin-top: 4px; }
 
-    /* ── Log Console ── */
+    /* -- Log Console -- */
     .log-console {
       background: #0a0c10; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px;
       font-family: 'Cascadia Code','Fira Code','Consolas',monospace; font-size: 12px; line-height: 1.6;
@@ -144,7 +170,7 @@
     .log-console .log-warn { color: var(--orange); }
     .log-console .log-success { color: var(--green); }
 
-    /* ── Phase Progress ── */
+    /* -- Phase Progress -- */
     .phases { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
     .phase-badge { padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; background: var(--surface2); color: var(--text2); }
     .phase-badge.active { background: var(--accent); color: #fff; animation: pulse 1.5s infinite; }
@@ -152,7 +178,7 @@
     .phase-badge.error { background: #7f1d1d; color: var(--red); }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
 
-    /* ── Query Cards ── */
+    /* -- Query Cards -- */
     .query-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; margin-bottom: 20px; }
     .query-item {
       padding: 12px 16px; background: var(--surface); border: 1px solid var(--border);
@@ -163,7 +189,7 @@
     .query-item .q-key { font-weight: 600; color: var(--accent); font-size: 12px; }
     .query-item .q-title { color: var(--text); margin-top: 2px; }
 
-    /* ── Data Table ── */
+    /* -- Data Table -- */
     .table-wrapper { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); margin-top: 12px; }
     .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
     .data-table th {
@@ -196,7 +222,7 @@
     .table-filter-bar .filter-clear:hover { border-color: var(--accent); color: var(--text); }
     .result-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; font-size: 12px; color: var(--text2); }
 
-    /* ── Schema ── */
+    /* -- Schema -- */
     .schema-block {
       background: #0a0c10; padding: 12px; border-radius: var(--radius); border: 1px solid var(--border);
       margin-bottom: 10px; font-family: 'Cascadia Code','Fira Code','Consolas',monospace;
@@ -205,7 +231,7 @@
     .schema-block .kw { color: var(--accent); }
     .schema-block .tbl { color: var(--green); font-weight: 600; }
 
-    /* ── Toast ── */
+    /* -- Toast -- */
     .toast {
       position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: var(--radius);
       font-size: 13px; font-weight: 500; z-index: 9999; animation: slideIn 0.3s;
@@ -214,7 +240,7 @@
     .toast.error { background: #7f1d1d; color: var(--red); }
     @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } }
 
-    /* ── Loading Spinner ── */
+    /* -- Loading Spinner -- */
     .loading-indicator {
       display: flex; align-items: center; gap: 10px; padding: 20px;
       color: var(--text2); font-size: 13px;
@@ -225,7 +251,7 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Audit Cards (simplified - no checkbox) ── */
+    /* -- Audit Cards (simplified - no checkbox) -- */
     .audit-card {
       background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
       padding: 14px 16px; cursor: pointer; transition: all 0.15s;
@@ -253,9 +279,22 @@
       display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
     }
 
-    /* ── CodeMirror container ── */
+    /* -- CodeMirror container -- */
     .cm-container { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 8px; }
     .cm-container .cm-editor { background: #0a0c10; }
+
+    /* -- Modal overlay -- */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6); z-index: 1000; display: flex;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      padding: 24px; width: 440px; max-width: 90vw; max-height: 90vh; overflow-y: auto;
+    }
+    .modal h3 { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
   </style>
 </head>
 <body>
@@ -266,12 +305,22 @@
         <h1>Jira Collector</h1>
         <p>Security Audit Tool</p>
       </div>
+      <!-- Workspace Selector -->
+      <div class="ws-selector">
+        <label>Workspace</label>
+        <div class="ws-selector-row">
+          <select id="ws-dropdown" onchange="switchWorkspace(this.value)">
+            <option value="">-- No workspace --</option>
+          </select>
+          <button class="ws-add-btn" onclick="showAddWorkspaceModal()" title="Add new workspace">+</button>
+        </div>
+      </div>
       <div class="nav">
         <div class="nav-item active" data-page="dashboard" onclick="showPage('dashboard')">
           <span class="icon">&#9634;</span> Dashboard
         </div>
         <div class="nav-item" data-page="settings" onclick="showPage('settings')">
-          <span class="icon">&#9881;</span> Settings
+          <span class="icon">&#9881;</span> Workspace Settings
         </div>
         <div class="nav-separator"></div>
         <div class="nav-item" data-page="collect" onclick="showPage('collect')">
@@ -311,9 +360,16 @@
         </div>
       </div>
 
-      <!-- Settings -->
+      <!-- Settings (Workspace Settings) -->
       <div id="page-settings" class="page">
-        <h2 class="page-title">Jira Connection Settings</h2>
+        <h2 class="page-title">Workspace Settings</h2>
+        <div class="card">
+          <div class="card-title">Workspace</div>
+          <div class="form-group">
+            <label>Workspace Name</label>
+            <input type="text" id="set-name" placeholder="My Jira Server">
+          </div>
+        </div>
         <div class="card">
           <div class="card-title">Server</div>
           <div class="form-group">
@@ -343,12 +399,13 @@
           </div>
           <div class="form-row">
             <div class="form-group"><label>Page Size</label><input type="number" id="set-pagesize" value="100" min="10" max="1000"></div>
-            <div class="form-group"><label>DB Path (optional)</label><input type="text" id="set-dbpath" placeholder="./jira_data.db"></div>
+            <div class="form-group"><label>DB Path (auto-managed)</label><input type="text" id="set-dbpath" placeholder="auto" disabled></div>
           </div>
         </div>
         <div class="btn-group">
           <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
           <button class="btn btn-outline" onclick="testConnection()">Test Connection</button>
+          <button class="btn btn-danger" onclick="deleteWorkspace()" id="btn-delete-ws" style="margin-left:auto">Delete Workspace</button>
         </div>
         <div id="test-result" style="margin-top:12px"></div>
       </div>
@@ -450,18 +507,38 @@
     </div>
   </div>
 
+  <!-- Add Workspace Modal -->
+  <div id="modal-add-ws" class="modal-overlay hidden" onclick="if(event.target===this)closeAddWsModal()">
+    <div class="modal">
+      <h3>Add New Workspace</h3>
+      <div class="form-group">
+        <label>Workspace Name</label>
+        <input type="text" id="new-ws-name" placeholder="e.g. Production Jira">
+      </div>
+      <div class="form-group">
+        <label>Jira Base URL</label>
+        <input type="url" id="new-ws-url" placeholder="https://jira.example.com">
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-primary" onclick="createWorkspace()">Create Workspace</button>
+        <button class="btn btn-outline" onclick="closeAddWsModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <script>
-    // ── State ──
+    // -- State --
     let ws, lastQueryRows = [], jiraBaseUrl = '';
     let cmCustomSQL = null, cmAuditSQL = null;
+    let currentWorkspaces = [], activeWorkspaceId = null;
 
-    // ── Loading helpers ──
+    // -- Loading helpers --
     function showLoading(targetId) {
       const el = document.getElementById(targetId);
       if (el) el.innerHTML = '<div class="loading-indicator"><div class="spinner"></div>Running query...</div>';
     }
 
-    // ── WebSocket ──
+    // -- WebSocket --
     function connectWS() {
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       ws = new WebSocket(`${protocol}//${location.host}/ws`);
@@ -470,12 +547,124 @@
         if (msg.type === 'state') updateCollectionUI(msg.state);
         if (msg.type === 'log') appendLog(msg);
         if (msg.type === 'phase') updatePhases(msg.phase);
+        if (msg.type === 'workspace-changed') {
+          loadWorkspaces();
+          loadStats();
+        }
       };
       ws.onclose = () => setTimeout(connectWS, 2000);
     }
     connectWS();
 
-    // ── Navigation ──
+    // -- Workspace Management --
+    async function loadWorkspaces() {
+      const res = await fetch('/api/workspaces').then(r => r.json());
+      currentWorkspaces = res.workspaces || [];
+      activeWorkspaceId = res.activeId;
+      renderWorkspaceDropdown();
+    }
+
+    function renderWorkspaceDropdown() {
+      const sel = document.getElementById('ws-dropdown');
+      sel.innerHTML = '';
+      if (currentWorkspaces.length === 0) {
+        sel.innerHTML = '<option value="">-- No workspace --</option>';
+      } else {
+        for (const w of currentWorkspaces) {
+          const opt = document.createElement('option');
+          opt.value = w.id;
+          opt.textContent = w.name || w.id;
+          if (w.id === activeWorkspaceId) opt.selected = true;
+          sel.appendChild(opt);
+        }
+      }
+      // Update connection badge
+      const active = currentWorkspaces.find(w => w.id === activeWorkspaceId);
+      if (active && active.JIRA_BASE_URL) {
+        updateConnBadge(true);
+      } else {
+        updateConnBadge(false);
+      }
+    }
+
+    async function switchWorkspace(id) {
+      if (!id || id === activeWorkspaceId) return;
+      try {
+        await fetch(`/api/workspaces/${id}/activate`, { method: 'POST' });
+        activeWorkspaceId = id;
+        toast('Workspace switched!', 'success');
+        loadWorkspaces();
+        // Reload current page data
+        const activePage = document.querySelector('.nav-item.active')?.getAttribute('data-page');
+        if (activePage === 'dashboard') loadStats();
+        if (activePage === 'settings') loadSettings();
+        if (activePage === 'browse') loadTableList();
+        if (activePage === 'schema') loadSchema();
+        // Reset audit loaded flag so it reloads
+        _auditLoaded = false;
+        if (activePage === 'audit') loadAuditQueries();
+        // Update jiraBaseUrl
+        const active = currentWorkspaces.find(w => w.id === id);
+        if (active) jiraBaseUrl = (active.JIRA_BASE_URL || '').replace(/\/+$/, '');
+      } catch (err) {
+        toast('Failed to switch workspace', 'error');
+      }
+    }
+
+    function showAddWorkspaceModal() {
+      document.getElementById('new-ws-name').value = '';
+      document.getElementById('new-ws-url').value = '';
+      document.getElementById('modal-add-ws').classList.remove('hidden');
+      document.getElementById('new-ws-name').focus();
+    }
+    function closeAddWsModal() {
+      document.getElementById('modal-add-ws').classList.add('hidden');
+    }
+
+    async function createWorkspace() {
+      const name = document.getElementById('new-ws-name').value.trim();
+      const url = document.getElementById('new-ws-url').value.trim().replace(/\/+$/, '');
+      if (!name) { toast('Name required', 'error'); return; }
+      const res = await fetch('/api/workspaces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, JIRA_BASE_URL: url }),
+      }).then(r => r.json());
+      if (res.ok) {
+        closeAddWsModal();
+        toast('Workspace created!', 'success');
+        // Activate the new workspace
+        await fetch(`/api/workspaces/${res.workspace.id}/activate`, { method: 'POST' });
+        activeWorkspaceId = res.workspace.id;
+        await loadWorkspaces();
+        loadStats();
+        showPage('settings');
+      } else {
+        toast(res.error || 'Failed', 'error');
+      }
+    }
+
+    async function deleteWorkspace() {
+      if (!activeWorkspaceId) { toast('No workspace selected', 'error'); return; }
+      const active = currentWorkspaces.find(w => w.id === activeWorkspaceId);
+      const name = active ? active.name : activeWorkspaceId;
+      if (!confirm(`Delete workspace "${name}"?\n\nThis will permanently delete the workspace configuration and its database file. This cannot be undone.`)) return;
+      const res = await fetch(`/api/workspaces/${activeWorkspaceId}`, { method: 'DELETE' }).then(r => r.json());
+      if (res.ok) {
+        toast('Workspace deleted', 'success');
+        activeWorkspaceId = null;
+        await loadWorkspaces();
+        // If there are remaining workspaces, activate the first
+        if (currentWorkspaces.length > 0) {
+          await switchWorkspace(currentWorkspaces[0].id);
+        }
+        loadStats();
+      } else {
+        toast(res.error || 'Failed', 'error');
+      }
+    }
+
+    // -- Navigation --
     function showPage(name) {
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
       document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -489,34 +678,39 @@
       if (name === 'settings') loadSettings();
     }
 
-    // ── Settings ──
+    // -- Settings --
     async function loadSettings() {
       const res = await fetch('/api/settings').then(r => r.json());
       const s = res.settings;
+      document.getElementById('set-name').value = s.name || '';
       document.getElementById('set-url').value = s.JIRA_BASE_URL;
       document.getElementById('set-user').value = s.JIRA_USERNAME;
       document.getElementById('set-pass').value = s.JIRA_PASSWORD;
       document.getElementById('set-pat').value = s.JIRA_PAT;
       document.getElementById('set-jql').value = s.JIRA_JQL;
       document.getElementById('set-pagesize').value = s.PAGE_SIZE || '100';
-      document.getElementById('set-dbpath').value = s.DB_PATH;
+      document.getElementById('set-dbpath').value = s.DB_PATH || 'auto';
       updateConnBadge(res.configured);
+      // Show/hide delete button based on workspace count
+      document.getElementById('btn-delete-ws').style.display = activeWorkspaceId ? 'inline-flex' : 'none';
     }
 
     async function saveSettings() {
       const body = {
+        name: document.getElementById('set-name').value.trim(),
         JIRA_BASE_URL: document.getElementById('set-url').value.replace(/\/+$/, ''),
         JIRA_USERNAME: document.getElementById('set-user').value,
         JIRA_PASSWORD: document.getElementById('set-pass').value,
         JIRA_PAT: document.getElementById('set-pat').value,
         JIRA_JQL: document.getElementById('set-jql').value,
         PAGE_SIZE: document.getElementById('set-pagesize').value,
-        DB_PATH: document.getElementById('set-dbpath').value,
       };
       await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       toast('Settings saved!', 'success');
       jiraBaseUrl = body.JIRA_BASE_URL;
       updateConnBadge(!!body.JIRA_BASE_URL);
+      // Reload workspaces to reflect name change
+      loadWorkspaces();
     }
 
     async function testConnection() {
@@ -538,25 +732,31 @@
       el.textContent = configured ? 'Configured' : 'Not configured';
     }
 
-    // ── Dashboard ──
+    // -- Dashboard --
     async function loadStats() {
-      const res = await fetch('/api/stats').then(r => r.json());
-      const grid = document.getElementById('stats-grid');
-      const important = ['projects','issues','users','comments','changelogs','groups','audit_log','sprints'];
-      let html = '';
-      for (const key of important) {
-        html += `<div class="stat-card"><div class="stat-value">${(res.stats[key]||0).toLocaleString()}</div><div class="stat-label">${key.replace(/_/g,' ')}</div></div>`;
-      }
-      if (res.fileSize) html += `<div class="stat-card"><div class="stat-value">${(res.fileSize/1048576).toFixed(1)}</div><div class="stat-label">DB Size (MB)</div></div>`;
-      grid.innerHTML = html;
-      const runEl = document.getElementById('last-run-info');
-      if (res.lastRun) {
-        const r = res.lastRun;
-        runEl.innerHTML = `<b>Status:</b> ${r.status} | <b>Started:</b> ${r.started_at} | <b>Finished:</b> ${r.finished_at||'-'} | <b>Issues:</b> ${r.total_issues} | <b>JQL:</b> ${r.jql_filter||'all'}<br><span style="color:var(--text2)">${r.notes||''}</span>`;
+      try {
+        const res = await fetch('/api/stats').then(r => r.json());
+        const grid = document.getElementById('stats-grid');
+        const important = ['projects','issues','users','comments','changelogs','groups','audit_log','sprints'];
+        let html = '';
+        for (const key of important) {
+          html += `<div class="stat-card"><div class="stat-value">${(res.stats[key]||0).toLocaleString()}</div><div class="stat-label">${key.replace(/_/g,' ')}</div></div>`;
+        }
+        if (res.fileSize) html += `<div class="stat-card"><div class="stat-value">${(res.fileSize/1048576).toFixed(1)}</div><div class="stat-label">DB Size (MB)</div></div>`;
+        grid.innerHTML = html;
+        const runEl = document.getElementById('last-run-info');
+        if (res.lastRun) {
+          const r = res.lastRun;
+          runEl.innerHTML = `<b>Status:</b> ${r.status} | <b>Started:</b> ${r.started_at} | <b>Finished:</b> ${r.finished_at||'-'} | <b>Issues:</b> ${r.total_issues} | <b>JQL:</b> ${r.jql_filter||'all'}<br><span style="color:var(--text2)">${r.notes||''}</span>`;
+        } else {
+          runEl.innerHTML = 'No data yet';
+        }
+      } catch {
+        document.getElementById('stats-grid').innerHTML = '<div style="color:var(--text2)">No active workspace</div>';
       }
     }
 
-    // ── Collection ──
+    // -- Collection --
     const ALL_PHASES = ['metadata','projects','users','issues','boards','security','audit_log'];
     let currentPhaseIdx = -1;
     async function startCollect(mode) {
@@ -604,7 +804,7 @@
       if (scroll) logEl.scrollTop = logEl.scrollHeight;
     }
 
-    // ── Queries Page ──
+    // -- Queries Page --
     async function loadQueries() {
       const queries = await fetch('/api/queries').then(r => r.json());
       const el = document.getElementById('query-list');
@@ -645,7 +845,7 @@
         </div>`;
     }
 
-    // ── Custom SQL ──
+    // -- Custom SQL --
     function getCustomSQLText() {
       return cmCustomSQL ? cmCustomSQL.state.doc.toString() : '';
     }
@@ -665,15 +865,17 @@
     }
     function exportQueryResult(format) { if (!lastQueryRows?.length) { toast('No data','error'); return; } downloadData(format); }
 
-    // ── Browse Tables ──
+    // -- Browse Tables --
     async function loadTableList() {
-      const stats = await fetch('/api/stats').then(r=>r.json());
-      const sel = document.getElementById('browse-table');
-      const cur = sel.value;
-      sel.innerHTML = '<option value="">-- Select table --</option>';
-      for (const [name, count] of Object.entries(stats.stats||{}).sort((a,b)=>a[0].localeCompare(b[0])))
-        sel.innerHTML += `<option value="${name}">${name} (${count})</option>`;
-      if (cur) sel.value = cur;
+      try {
+        const stats = await fetch('/api/stats').then(r=>r.json());
+        const sel = document.getElementById('browse-table');
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">-- Select table --</option>';
+        for (const [name, count] of Object.entries(stats.stats||{}).sort((a,b)=>a[0].localeCompare(b[0])))
+          sel.innerHTML += `<option value="${name}">${name} (${count})</option>`;
+        if (cur) sel.value = cur;
+      } catch { /* no workspace */ }
     }
     async function browseTable() {
       const table = document.getElementById('browse-table').value;
@@ -687,18 +889,20 @@
     function exportBrowseCSV() { const t = document.getElementById('browse-table').value; if (t) window.open(`/api/export/${t}?format=csv`); }
     function exportBrowseJSON() { const t = document.getElementById('browse-table').value; if (t) window.open(`/api/export/${t}?format=json`); }
 
-    // ── Schema ──
+    // -- Schema --
     async function loadSchema() {
-      const tables = await fetch('/api/schema').then(r=>r.json());
-      document.getElementById('schema-list').innerHTML = tables.map(t => {
-        const h = (t.sql||'')
-          .replace(/\b(CREATE TABLE IF NOT EXISTS|CREATE INDEX IF NOT EXISTS|PRIMARY KEY|FOREIGN KEY|REFERENCES|NOT NULL|DEFAULT|UNIQUE|AUTOINCREMENT|INTEGER|TEXT|REAL|ON CONFLICT)\b/g, '<span class="kw">$1</span>')
-          .replace(/(?<=CREATE TABLE IF NOT EXISTS\s+)(\w+)/g, '<span class="tbl">$1</span>');
-        return `<div class="schema-block">${h}</div>`;
-      }).join('');
+      try {
+        const tables = await fetch('/api/schema').then(r=>r.json());
+        document.getElementById('schema-list').innerHTML = tables.map(t => {
+          const h = (t.sql||'')
+            .replace(/\b(CREATE TABLE IF NOT EXISTS|CREATE INDEX IF NOT EXISTS|PRIMARY KEY|FOREIGN KEY|REFERENCES|NOT NULL|DEFAULT|UNIQUE|AUTOINCREMENT|INTEGER|TEXT|REAL|ON CONFLICT)\b/g, '<span class="kw">$1</span>')
+            .replace(/(?<=CREATE TABLE IF NOT EXISTS\s+)(\w+)/g, '<span class="tbl">$1</span>');
+          return `<div class="schema-block">${h}</div>`;
+        }).join('');
+      } catch { /* no workspace */ }
     }
 
-    // ── Render Table with sort + filter ──
+    // -- Render Table with sort + filter --
     const issueKeyRe = /^[A-Z][A-Z0-9_]+-\d+$/;
     const issueKeyInlineRe = /\b([A-Z][A-Z0-9_]+-\d+)\b/g;
     function isIssueKeyCol(c) { const l=c.toLowerCase(); return ['key','issue_key','issue key','parent_key','epic_key','linked_issue_key','issue keys'].includes(l); }
@@ -765,7 +969,7 @@
       if(info) info.textContent = terms.length?`${vis} / ${rows.length} rows`:`${rows.length} rows`;
     }
 
-    // ── Download ──
+    // -- Download --
     function downloadData(format) {
       if(!lastQueryRows?.length)return;
       const rows=lastQueryRows, cols=Object.keys(rows[0]).filter(c=>c!=='raw_json');
@@ -779,12 +983,12 @@
       const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type:mime}));a.download=`query_result.${ext}`;a.click();
     }
 
-    // ── Utils ──
+    // -- Utils --
     function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
     function escAttr(s){return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
     function toast(msg,type){const t=document.createElement('div');t.className=`toast ${type}`;t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3000);}
 
-    // ── Audit Page ──
+    // -- Audit Page --
     let auditQueries=[], auditActiveCategory=null, auditLastRows=[], auditLastTitle='', auditLastSQL='';
     let _auditLoaded = false;
 
@@ -898,7 +1102,7 @@
       toast('Full report exported!','success');
     }
 
-    // ── Init CodeMirror editors ──
+    // -- Init CodeMirror editors --
     window._initEditors = function() {
       if (!window._cmReady || !window._createEditor) return;
       cmCustomSQL = window._createEditor('cm-custom-sql',
@@ -908,11 +1112,11 @@
       cmAuditSQL = window._createEditor('cm-audit-sql', 'SELECT * FROM issues WHERE ... LIMIT 50', runAuditCustomSQL);
     };
 
-    // ── Init ──
-    loadStats();
-    fetch('/api/settings').then(r=>r.json()).then(r=>{
-      updateConnBadge(r.configured);
-      jiraBaseUrl = (r.settings.JIRA_BASE_URL||'').replace(/\/+$/,'');
+    // -- Init --
+    loadWorkspaces().then(() => {
+      loadStats();
+      const active = currentWorkspaces.find(w => w.id === activeWorkspaceId);
+      if (active) jiraBaseUrl = (active.JIRA_BASE_URL || '').replace(/\/+$/, '');
     });
     // Try init editors now (in case module already loaded)
     if (window._cmReady) window._initEditors();

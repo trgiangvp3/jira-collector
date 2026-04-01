@@ -6,3 +6,5 @@ node_modules/
 *.db-wal
 export/
 Danh sach he thong.xlsx
+workspaces.json
+data/
