@@ -11,7 +11,6 @@ const XLSX = require('xlsx');
 const { initSchema, getDb, closeDb, closeAll } = require('./src/db');
 const JiraClient = require('./src/jira-client');
 const collectors = require('./src/collectors');
-const { QUERIES } = require('./src/queries');
 const { loadAuditQueries } = require('./src/audit-queries');
 const workspaceManager = require('./src/workspace-manager');
 
@@ -347,21 +346,23 @@ async function runCollection(mode) {
   }
 }
 
-// ── Query API ──────────────────────────────────────────
+// ── Query API (unified - all queries come from AUDIT_QUERIES now) ──
 app.get('/api/queries', (req, res) => {
-  const list = Object.entries(QUERIES).map(([key, q]) => ({ key, title: q.title }));
+  const list = Object.entries(AUDIT_QUERIES).map(([key, q]) => ({
+    key, title: q.title, category: q.category,
+  }));
   res.json(list);
 });
 
 app.get('/api/queries/:name', (req, res) => {
-  const query = QUERIES[req.params.name];
+  const query = AUDIT_QUERIES[req.params.name];
   if (!query) return res.status(404).json({ error: 'Query not found' });
 
   try {
     const activeId = getActiveWorkspaceId();
     const db = getDb(activeId);
     const rows = db.prepare(query.sql).all();
-    res.json({ title: query.title, sql: query.sql.trim(), rows, count: rows.length });
+    res.json({ title: query.title, category: query.category, sql: query.sql.trim(), rows, count: rows.length });
   } catch (err) {
     res.json({ title: query.title, error: err.message, rows: [], count: 0 });
   }
