@@ -178,17 +178,6 @@
     .phase-badge.error { background: #7f1d1d; color: var(--red); }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
 
-    /* -- Query Cards -- */
-    .query-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; margin-bottom: 20px; }
-    .query-item {
-      padding: 12px 16px; background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); cursor: pointer; transition: all 0.15s; font-size: 13px;
-    }
-    .query-item:hover { border-color: var(--accent); background: var(--surface2); }
-    .query-item.active { border-color: var(--accent); background: rgba(108,140,255,0.1); }
-    .query-item .q-key { font-weight: 600; color: var(--accent); font-size: 12px; }
-    .query-item .q-title { color: var(--text); margin-top: 2px; }
-
     /* -- Data Table -- */
     .table-wrapper { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); margin-top: 12px; }
     .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -331,9 +320,6 @@
           <span class="icon">&#9888;</span> Audit Report
         </div>
         <div class="nav-separator"></div>
-        <div class="nav-item" data-page="queries" onclick="showPage('queries')">
-          <span class="icon">&#9783;</span> Queries
-        </div>
         <div class="nav-item" data-page="custom-sql" onclick="showPage('custom-sql')">
           <span class="icon">&#62;</span> Custom SQL
         </div>
@@ -430,13 +416,6 @@
           <div class="card-title">Log Output</div>
           <div id="log-console" class="log-console"><div class="log-line" style="color:var(--text2)">Ready. Choose a collection mode to start.</div></div>
         </div>
-      </div>
-
-      <!-- Queries -->
-      <div id="page-queries" class="page">
-        <h2 class="page-title">Analysis Queries</h2>
-        <div id="query-list" class="query-list"></div>
-        <div id="query-result"></div>
       </div>
 
       <!-- Custom SQL -->
@@ -672,7 +651,6 @@
       document.querySelector(`.nav-item[data-page="${name}"]`).classList.add('active');
       if (name === 'dashboard') loadStats();
       if (name === 'audit') loadAuditQueries();
-      if (name === 'queries') loadQueries();
       if (name === 'browse') loadTableList();
       if (name === 'schema') loadSchema();
       if (name === 'settings') loadSettings();
@@ -802,47 +780,6 @@
       div.innerHTML = `<span class="log-time">${time}</span><span class="${cls}">${escHtml(entry.text||'')}</span>`;
       logEl.appendChild(div);
       if (scroll) logEl.scrollTop = logEl.scrollHeight;
-    }
-
-    // -- Queries Page --
-    async function loadQueries() {
-      const queries = await fetch('/api/queries').then(r => r.json());
-      const el = document.getElementById('query-list');
-      const groups = {};
-      for (const q of queries) {
-        const cat = q.key.includes('user')||q.key.includes('inactive') ? 'Users & Access' :
-          q.key.includes('group')||q.key.includes('admin')||q.key.includes('role')||q.key.includes('permission')||q.key.includes('security') ? 'Security & Permissions' :
-          q.key.includes('project')||q.key.includes('sprint') ? 'Projects & Sprints' :
-          q.key.includes('worklog')||q.key.includes('attachment') ? 'Worklogs & Attachments' :
-          q.key.includes('status')||q.key.includes('assignee')||q.key.includes('change')||q.key.includes('audit') ? 'Change Tracking' : 'Issues';
-        (groups[cat] ??= []).push(q);
-      }
-      let html = '';
-      for (const [cat, items] of Object.entries(groups)) {
-        html += `<div style="grid-column:1/-1;font-size:13px;font-weight:600;color:var(--text2);margin-top:8px">${cat}</div>`;
-        for (const q of items) html += `<div class="query-item" onclick="runNamedQuery('${q.key}',this)"><div class="q-key">${q.key}</div><div class="q-title">${q.title}</div></div>`;
-      }
-      el.innerHTML = html;
-    }
-    async function runNamedQuery(name, el) {
-      document.querySelectorAll('.query-item').forEach(i => i.classList.remove('active'));
-      if (el) el.classList.add('active');
-      showLoading('query-result');
-      const res = await fetch(`/api/queries/${name}`).then(r => r.json());
-      lastQueryRows = res.rows;
-      document.getElementById('query-result').innerHTML = `
-        <div class="card" style="margin-top:16px">
-          <div class="card-title">${res.title}</div>
-          <details style="margin-bottom:8px"><summary style="cursor:pointer;color:var(--text2);font-size:12px">Show SQL</summary>
-            <pre style="background:#0a0c10;padding:8px;border-radius:6px;font-size:12px;color:var(--green);margin-top:6px;overflow-x:auto">${escHtml(res.sql||'')}</pre>
-          </details>
-          ${res.error?`<div style="color:var(--red)">${res.error}</div>`:''}
-          <div class="result-bar"><span>${res.count} rows</span>
-            <div><button class="btn btn-outline" onclick="downloadData('csv')" style="padding:4px 10px;font-size:11px">CSV</button>
-            <button class="btn btn-outline" onclick="downloadData('json')" style="padding:4px 10px;font-size:11px">JSON</button></div>
-          </div>
-          ${renderTable(res.rows)}
-        </div>`;
     }
 
     // -- Custom SQL --
