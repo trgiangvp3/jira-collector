@@ -230,7 +230,7 @@ app.post('/api/collect/start', async (req, res) => {
     return res.status(409).json({ error: 'Collection already running' });
   }
 
-  const { mode, forceFullRefresh } = req.body; // full, issues, meta, audit
+  const { mode, forceFullRefresh } = req.body;
   collectionState = {
     running: true,
     phase: 'starting',

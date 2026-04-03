@@ -178,8 +178,6 @@ async function collectIssues(client, db, jql, forceFullRefresh = false) {
     try {
       const lastRow = db.prepare('SELECT MAX(updated) as last_updated FROM issues').get();
       if (lastRow && lastRow.last_updated) {
-        // Jira datetime format: "2025-01-15T10:30:00.000+0700"
-        // JQL needs: "2025-01-15 10:30"
         const lastUpdated = lastRow.last_updated.replace('T', ' ').substring(0, 16);
         const incrementalFilter = `updated >= "${lastUpdated}"`;
         if (effectiveJql) {
@@ -251,7 +249,7 @@ async function collectIssues(client, db, jql, forceFullRefresh = false) {
 
   for await (const page of client.searchIssues(effectiveJql)) {
     if (pageNum === 0) {
-      console.log(`  Total issues to collect: ${page.total}`);
+      console.log(`  Total issues to process: ${page.total}`);
     }
     pageNum++;
     const fieldNames = page.names || {};
