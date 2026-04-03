@@ -1,204 +1,29 @@
-const initSqlJs = require('sql.js');
+const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
 
-// ── Registry: Map<workspaceId, { wrapper, dbPath, saveTimer }> ──
+// ── Registry: Map<workspaceId, Database> ──
 const registry = new Map();
-
-// Shared SQL.js instance (loaded once)
-let SQL = null;
-
-/**
- * Wrapper that provides a better-sqlite3 compatible API on top of sql.js
- * So all existing code (collectors, queries, server) works without changes.
- */
-class SqlJsWrapper {
-  constructor(rawDb, workspaceId) {
-    this.rawDb = rawDb;
-    this._wsId = workspaceId;
-  }
-
-  exec(sql) {
-    this.rawDb.run(sql);
-    scheduleSave(this._wsId);
-  }
-
-  pragma(str) {
-    try { this.rawDb.run(`PRAGMA ${str}`); } catch { /* ignore unsupported pragmas */ }
-  }
-
-  prepare(sql) {
-    return new StatementWrapper(this.rawDb, sql, this._wsId);
-  }
-
-  transaction(fn) {
-    const wsId = this._wsId;
-    return (...args) => {
-      this.rawDb.run('BEGIN TRANSACTION');
-      try {
-        const result = fn(...args);
-        this.rawDb.run('COMMIT');
-        scheduleSave(wsId);
-        return result;
-      } catch (err) {
-        this.rawDb.run('ROLLBACK');
-        throw err;
-      }
-    };
-  }
-
-  close() {
-    flushSave(this._wsId);
-    this.rawDb.close();
-  }
-}
-
-class StatementWrapper {
-  constructor(rawDb, sql, wsId) {
-    this.rawDb = rawDb;
-    this.sql = sql;
-    this._wsId = wsId;
-  }
-
-  run(...params) {
-    const flat = flattenParams(params);
-    this.rawDb.run(this.sql, flat);
-    scheduleSave(this._wsId);
-    const info = {
-      changes: this.rawDb.getRowsModified(),
-      lastInsertRowid: getLastInsertRowid(this.rawDb),
-    };
-    return info;
-  }
-
-  get(...params) {
-    const flat = flattenParams(params);
-    let stmt;
-    try {
-      stmt = this.rawDb.prepare(this.sql);
-      if (flat.length > 0) stmt.bind(flat);
-      if (stmt.step()) {
-        return rowToObject(stmt);
-      }
-      return undefined;
-    } finally {
-      if (stmt) stmt.free();
-    }
-  }
-
-  all(...params) {
-    const flat = flattenParams(params);
-    const rows = [];
-    let stmt;
-    try {
-      stmt = this.rawDb.prepare(this.sql);
-      if (flat.length > 0) stmt.bind(flat);
-      while (stmt.step()) {
-        rows.push(rowToObject(stmt));
-      }
-    } finally {
-      if (stmt) stmt.free();
-    }
-    return rows;
-  }
-}
-
-function flattenParams(params) {
-  if (params.length === 0) return [];
-  if (params.length === 1 && Array.isArray(params[0])) return params[0];
-  return params;
-}
-
-function rowToObject(stmt) {
-  const cols = stmt.getColumnNames();
-  const vals = stmt.get();
-  const obj = {};
-  for (let i = 0; i < cols.length; i++) {
-    obj[cols[i]] = vals[i];
-  }
-  return obj;
-}
-
-function getLastInsertRowid(rawDb) {
-  let stmt;
-  try {
-    stmt = rawDb.prepare('SELECT last_insert_rowid() as id');
-    if (stmt.step()) return stmt.get()[0];
-    return 0;
-  } finally {
-    if (stmt) stmt.free();
-  }
-}
-
-// ── Save scheduling per workspace ──
-
-function scheduleSave(wsId) {
-  const entry = registry.get(wsId);
-  if (!entry || entry.saveTimer) return;
-  entry.saveTimer = setTimeout(() => {
-    flushSave(wsId);
-  }, 2000);
-}
-
-function flushSave(wsId) {
-  const entry = registry.get(wsId);
-  if (!entry) return;
-  if (entry.saveTimer) {
-    clearTimeout(entry.saveTimer);
-    entry.saveTimer = null;
-  }
-  if (entry.wrapper) {
-    try {
-      const data = entry.wrapper.rawDb.export();
-      const buffer = Buffer.from(data);
-      // Ensure directory exists
-      const dir = path.dirname(entry.dbPath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(entry.dbPath, buffer);
-    } catch (err) {
-      console.error(`[DB:${wsId}] Save error:`, err.message);
-    }
-  }
-}
-
-// ── Public API ──
 
 /**
  * Initialize a workspace's database at the given path and run schema DDL.
- * @param {string} workspaceId - unique workspace identifier
- * @param {string} dbPath - absolute path to the .db file
  */
 async function initSchema(workspaceId, dbPath) {
-  // If already initialized for this workspace, return existing
   if (registry.has(workspaceId)) {
-    return registry.get(workspaceId).wrapper;
+    return registry.get(workspaceId);
   }
 
-  if (!SQL) {
-    SQL = await initSqlJs();
-  }
-
-  // Resolve path; ensure directory exists
   const resolvedPath = path.resolve(dbPath);
   const dir = path.dirname(resolvedPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-  let rawDb;
-  if (fs.existsSync(resolvedPath)) {
-    const fileBuffer = fs.readFileSync(resolvedPath);
-    rawDb = new SQL.Database(fileBuffer);
-  } else {
-    rawDb = new SQL.Database();
-  }
+  const db = new Database(resolvedPath);
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
 
-  rawDb.run('PRAGMA foreign_keys = ON');
+  registry.set(workspaceId, db);
 
-  const wrapper = new SqlJsWrapper(rawDb, workspaceId);
-  registry.set(workspaceId, { wrapper, dbPath: resolvedPath, saveTimer: null });
-
-  // Run schema DDL
-  wrapper.exec(`
-    -- Metadata: track collection runs
+  db.exec(`
     CREATE TABLE IF NOT EXISTS collection_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       started_at TEXT NOT NULL,
@@ -209,7 +34,6 @@ async function initSchema(workspaceId, dbPath) {
       notes TEXT
     );
 
-    -- Projects
     CREATE TABLE IF NOT EXISTS projects (
       id INTEGER PRIMARY KEY,
       key TEXT NOT NULL UNIQUE,
@@ -224,7 +48,6 @@ async function initSchema(workspaceId, dbPath) {
       collected_at TEXT DEFAULT (datetime('now'))
     );
 
-    -- Project components
     CREATE TABLE IF NOT EXISTS components (
       id INTEGER PRIMARY KEY,
       project_key TEXT NOT NULL,
@@ -235,7 +58,6 @@ async function initSchema(workspaceId, dbPath) {
       raw_json TEXT
     );
 
-    -- Project versions
     CREATE TABLE IF NOT EXISTS versions (
       id INTEGER PRIMARY KEY,
       project_key TEXT NOT NULL,
@@ -248,7 +70,6 @@ async function initSchema(workspaceId, dbPath) {
       raw_json TEXT
     );
 
-    -- Users
     CREATE TABLE IF NOT EXISTS users (
       account_key TEXT PRIMARY KEY,
       username TEXT,
@@ -260,7 +81,6 @@ async function initSchema(workspaceId, dbPath) {
       collected_at TEXT DEFAULT (datetime('now'))
     );
 
-    -- Issue types
     CREATE TABLE IF NOT EXISTS issue_types (
       id TEXT PRIMARY KEY,
       name TEXT,
@@ -269,7 +89,6 @@ async function initSchema(workspaceId, dbPath) {
       raw_json TEXT
     );
 
-    -- Statuses
     CREATE TABLE IF NOT EXISTS statuses (
       id TEXT PRIMARY KEY,
       name TEXT,
@@ -279,7 +98,6 @@ async function initSchema(workspaceId, dbPath) {
       raw_json TEXT
     );
 
-    -- Priorities
     CREATE TABLE IF NOT EXISTS priorities (
       id TEXT PRIMARY KEY,
       name TEXT,
@@ -287,7 +105,6 @@ async function initSchema(workspaceId, dbPath) {
       raw_json TEXT
     );
 
-    -- Resolutions
     CREATE TABLE IF NOT EXISTS resolutions (
       id TEXT PRIMARY KEY,
       name TEXT,
@@ -295,7 +112,6 @@ async function initSchema(workspaceId, dbPath) {
       raw_json TEXT
     );
 
-    -- Custom field definitions
     CREATE TABLE IF NOT EXISTS custom_field_definitions (
       id TEXT PRIMARY KEY,
       name TEXT,
@@ -304,7 +120,6 @@ async function initSchema(workspaceId, dbPath) {
       raw_json TEXT
     );
 
-    -- Issues (main table)
     CREATE TABLE IF NOT EXISTS issues (
       id INTEGER PRIMARY KEY,
       key TEXT NOT NULL UNIQUE,
@@ -347,7 +162,6 @@ async function initSchema(workspaceId, dbPath) {
       collected_at TEXT DEFAULT (datetime('now'))
     );
 
-    -- Issue links
     CREATE TABLE IF NOT EXISTS issue_links (
       id INTEGER PRIMARY KEY,
       issue_key TEXT NOT NULL,
@@ -361,7 +175,6 @@ async function initSchema(workspaceId, dbPath) {
       raw_json TEXT
     );
 
-    -- Comments
     CREATE TABLE IF NOT EXISTS comments (
       id INTEGER PRIMARY KEY,
       issue_key TEXT NOT NULL,
@@ -377,7 +190,6 @@ async function initSchema(workspaceId, dbPath) {
       raw_json TEXT
     );
 
-    -- Worklogs
     CREATE TABLE IF NOT EXISTS worklogs (
       id INTEGER PRIMARY KEY,
       issue_key TEXT NOT NULL,
@@ -393,7 +205,6 @@ async function initSchema(workspaceId, dbPath) {
       raw_json TEXT
     );
 
-    -- Changelogs (issue history)
     CREATE TABLE IF NOT EXISTS changelogs (
       id INTEGER PRIMARY KEY,
       issue_key TEXT NOT NULL,
@@ -403,7 +214,6 @@ async function initSchema(workspaceId, dbPath) {
       raw_json TEXT
     );
 
-    -- Changelog items (individual field changes)
     CREATE TABLE IF NOT EXISTS changelog_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       changelog_id INTEGER NOT NULL,
@@ -417,7 +227,6 @@ async function initSchema(workspaceId, dbPath) {
       FOREIGN KEY (changelog_id) REFERENCES changelogs(id)
     );
 
-    -- Attachments metadata
     CREATE TABLE IF NOT EXISTS attachments (
       id INTEGER PRIMARY KEY,
       issue_key TEXT NOT NULL,
@@ -431,7 +240,6 @@ async function initSchema(workspaceId, dbPath) {
       raw_json TEXT
     );
 
-    -- Custom field values
     CREATE TABLE IF NOT EXISTS custom_field_values (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       issue_key TEXT NOT NULL,
@@ -441,7 +249,6 @@ async function initSchema(workspaceId, dbPath) {
       display_value TEXT
     );
 
-    -- Sprints
     CREATE TABLE IF NOT EXISTS sprints (
       id INTEGER PRIMARY KEY,
       board_id INTEGER,
@@ -454,14 +261,12 @@ async function initSchema(workspaceId, dbPath) {
       raw_json TEXT
     );
 
-    -- Issue-Sprint relationship
     CREATE TABLE IF NOT EXISTS issue_sprints (
       issue_key TEXT NOT NULL,
       sprint_id INTEGER NOT NULL,
       PRIMARY KEY (issue_key, sprint_id)
     );
 
-    -- Boards (Agile)
     CREATE TABLE IF NOT EXISTS boards (
       id INTEGER PRIMARY KEY,
       name TEXT,
@@ -470,7 +275,6 @@ async function initSchema(workspaceId, dbPath) {
       raw_json TEXT
     );
 
-    -- Permission schemes
     CREATE TABLE IF NOT EXISTS permission_schemes (
       id INTEGER PRIMARY KEY,
       name TEXT,
@@ -479,7 +283,6 @@ async function initSchema(workspaceId, dbPath) {
       collected_at TEXT DEFAULT (datetime('now'))
     );
 
-    -- Roles
     CREATE TABLE IF NOT EXISTS project_roles (
       id INTEGER PRIMARY KEY,
       name TEXT,
@@ -487,7 +290,6 @@ async function initSchema(workspaceId, dbPath) {
       raw_json TEXT
     );
 
-    -- Project role members
     CREATE TABLE IF NOT EXISTS project_role_members (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_key TEXT NOT NULL,
@@ -499,7 +301,6 @@ async function initSchema(workspaceId, dbPath) {
       raw_json TEXT
     );
 
-    -- Filters (saved searches)
     CREATE TABLE IF NOT EXISTS filters (
       id INTEGER PRIMARY KEY,
       name TEXT,
@@ -511,7 +312,6 @@ async function initSchema(workspaceId, dbPath) {
       collected_at TEXT DEFAULT (datetime('now'))
     );
 
-    -- Dashboards
     CREATE TABLE IF NOT EXISTS dashboards (
       id INTEGER PRIMARY KEY,
       name TEXT,
@@ -521,7 +321,6 @@ async function initSchema(workspaceId, dbPath) {
       collected_at TEXT DEFAULT (datetime('now'))
     );
 
-    -- Audit log entries (if accessible)
     CREATE TABLE IF NOT EXISTS audit_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       summary TEXT,
@@ -536,14 +335,12 @@ async function initSchema(workspaceId, dbPath) {
       collected_at TEXT DEFAULT (datetime('now'))
     );
 
-    -- Groups
     CREATE TABLE IF NOT EXISTS groups (
       name TEXT PRIMARY KEY,
       raw_json TEXT,
       collected_at TEXT DEFAULT (datetime('now'))
     );
 
-    -- Group members
     CREATE TABLE IF NOT EXISTS group_members (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       group_name TEXT NOT NULL,
@@ -553,7 +350,6 @@ async function initSchema(workspaceId, dbPath) {
       active INTEGER DEFAULT 1
     );
 
-    -- Workflows
     CREATE TABLE IF NOT EXISTS workflows (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT UNIQUE,
@@ -564,7 +360,6 @@ async function initSchema(workspaceId, dbPath) {
       collected_at TEXT DEFAULT (datetime('now'))
     );
 
-    -- Notification schemes
     CREATE TABLE IF NOT EXISTS notification_schemes (
       id INTEGER PRIMARY KEY,
       name TEXT,
@@ -573,7 +368,6 @@ async function initSchema(workspaceId, dbPath) {
       collected_at TEXT DEFAULT (datetime('now'))
     );
 
-    -- Security schemes
     CREATE TABLE IF NOT EXISTS security_schemes (
       id INTEGER PRIMARY KEY,
       name TEXT,
@@ -583,7 +377,6 @@ async function initSchema(workspaceId, dbPath) {
       collected_at TEXT DEFAULT (datetime('now'))
     );
 
-    -- Create indexes
     CREATE INDEX IF NOT EXISTS idx_issues_project ON issues(project_key);
     CREATE INDEX IF NOT EXISTS idx_issues_assignee ON issues(assignee_key);
     CREATE INDEX IF NOT EXISTS idx_issues_reporter ON issues(reporter_key);
@@ -607,41 +400,28 @@ async function initSchema(workspaceId, dbPath) {
   `);
 
   console.log(`[DB:${workspaceId}] Schema initialized at ${resolvedPath}`);
-  return wrapper;
+  return db;
 }
 
-/**
- * Get the DB wrapper for a workspace. Throws if not initialized.
- */
 function getDb(workspaceId) {
-  const entry = registry.get(workspaceId);
-  if (!entry) throw new Error(`Database not initialized for workspace "${workspaceId}". Call initSchema() first.`);
-  return entry.wrapper;
+  const db = registry.get(workspaceId);
+  if (!db) throw new Error(`Database not initialized for workspace "${workspaceId}". Call initSchema() first.`);
+  return db;
 }
 
-/**
- * Close a single workspace's DB.
- */
 function closeDb(workspaceId) {
-  const entry = registry.get(workspaceId);
-  if (!entry) return;
-  flushSave(workspaceId);
-  try { entry.wrapper.close(); } catch { /* ignore */ }
+  const db = registry.get(workspaceId);
+  if (!db) return;
+  try { db.close(); } catch { /* ignore */ }
   registry.delete(workspaceId);
 }
 
-/**
- * Close all open databases.
- */
 function closeAll() {
   for (const wsId of registry.keys()) {
     closeDb(wsId);
   }
 }
 
-/**
- * Check whether a workspace DB is currently open.
- */
 function isOpen(workspaceId) {
   return registry.has(workspaceId);
 }
