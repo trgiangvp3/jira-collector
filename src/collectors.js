@@ -167,8 +167,35 @@ async function collectUsers(client, db) {
 // ============================================================
 // Collect issues with all details
 // ============================================================
-async function collectIssues(client, db, jql) {
+async function collectIssues(client, db, jql, forceFullRefresh = false) {
   console.log('\n=== Collecting issues ===');
+
+  // Incremental: find last updated timestamp in DB to only fetch changed issues
+  let effectiveJql = jql;
+  if (forceFullRefresh) {
+    console.log('  [FULL REFRESH] Forced by user, fetching all issues');
+  } else {
+    try {
+      const lastRow = db.prepare('SELECT MAX(updated) as last_updated FROM issues').get();
+      if (lastRow && lastRow.last_updated) {
+        // Jira datetime format: "2025-01-15T10:30:00.000+0700"
+        // JQL needs: "2025-01-15 10:30"
+        const lastUpdated = lastRow.last_updated.replace('T', ' ').substring(0, 16);
+        const incrementalFilter = `updated >= "${lastUpdated}"`;
+        if (effectiveJql) {
+          effectiveJql = `(${effectiveJql}) AND ${incrementalFilter}`;
+        } else {
+          effectiveJql = `${incrementalFilter} ORDER BY updated ASC`;
+        }
+        console.log(`  [INCREMENTAL] Last updated in DB: ${lastUpdated}`);
+        console.log(`  [INCREMENTAL] JQL: ${effectiveJql}`);
+      } else {
+        console.log('  [FULL] No existing data, fetching all issues');
+      }
+    } catch {
+      console.log('  [FULL] Could not determine last update, fetching all issues');
+    }
+  }
 
   const insertIssue = db.prepare(`INSERT OR REPLACE INTO issues
     (id, key, project_key, issue_type_id, issue_type_name,
@@ -222,7 +249,7 @@ async function collectIssues(client, db, jql) {
   let totalIssues = 0;
   let pageNum = 0;
 
-  for await (const page of client.searchIssues(jql)) {
+  for await (const page of client.searchIssues(effectiveJql)) {
     if (pageNum === 0) {
       console.log(`  Total issues to collect: ${page.total}`);
     }

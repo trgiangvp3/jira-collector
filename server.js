@@ -230,7 +230,7 @@ app.post('/api/collect/start', async (req, res) => {
     return res.status(409).json({ error: 'Collection already running' });
   }
 
-  const { mode } = req.body; // full, issues, meta, audit
+  const { mode, forceFullRefresh } = req.body; // full, issues, meta, audit
   collectionState = {
     running: true,
     phase: 'starting',
@@ -244,7 +244,7 @@ app.post('/api/collect/start', async (req, res) => {
   res.json({ ok: true });
 
   // Run collection in background
-  runCollection(mode || 'full');
+  runCollection(mode || 'full', !!forceFullRefresh);
 });
 
 app.post('/api/collect/abort', (req, res) => {
@@ -257,7 +257,7 @@ app.post('/api/collect/abort', (req, res) => {
   res.json({ ok: true });
 });
 
-async function runCollection(mode) {
+async function runCollection(mode, forceFullRefresh = false) {
   // Override console.log to capture output
   const originalLog = console.log;
   const originalError = console.error;
@@ -288,7 +288,7 @@ async function runCollection(mode) {
       await collectors.collectAuditLog(client, db);
     } else if (mode === 'issues') {
       setPhase('issues');
-      await collectors.collectIssues(client, db, jql);
+      await collectors.collectIssues(client, db, jql, forceFullRefresh);
     } else if (mode === 'meta') {
       setPhase('metadata');
       await collectors.collectMetadata(client, db);
@@ -316,7 +316,7 @@ async function runCollection(mode) {
       if (collectionState.aborted) throw new Error('Aborted');
 
       setPhase('issues');
-      await collectors.collectIssues(client, db, jql);
+      await collectors.collectIssues(client, db, jql, forceFullRefresh);
       if (collectionState.aborted) throw new Error('Aborted');
 
       setPhase('boards');

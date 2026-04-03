@@ -401,11 +401,13 @@
         <h2 class="page-title">Data Collection</h2>
         <div class="card">
           <div class="card-title">Collection Mode</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:10px">Incremental by default: only fetches issues updated since last collection. Use "Force Full Refresh" to re-download everything.</p>
           <div class="btn-group">
-            <button class="btn btn-success" onclick="startCollect('full')" id="btn-full">&#9654; Full Collection</button>
+            <button class="btn btn-success" onclick="startCollect('full')" id="btn-full">&#9654; Collect (incremental)</button>
             <button class="btn btn-outline" onclick="startCollect('meta')" id="btn-meta">Metadata + Users + Security</button>
             <button class="btn btn-outline" onclick="startCollect('issues')" id="btn-issues">Issues Only</button>
             <button class="btn btn-outline" onclick="startCollect('audit')" id="btn-audit">Audit Log Only</button>
+            <button class="btn btn-outline" onclick="startCollect('full', true)" id="btn-force" style="border-color:var(--orange);color:var(--orange)">Force Full Refresh</button>
             <button class="btn btn-danger" onclick="abortCollect()" id="btn-abort" style="display:none">&#9632; Abort</button>
           </div>
         </div>
@@ -737,8 +739,9 @@
     // -- Collection --
     const ALL_PHASES = ['metadata','projects','users','issues','boards','security','audit_log'];
     let currentPhaseIdx = -1;
-    async function startCollect(mode) {
-      const res = await fetch('/api/collect/start', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mode}) }).then(r=>r.json());
+    async function startCollect(mode, forceFullRefresh = false) {
+      if (forceFullRefresh && !confirm('Force Full Refresh will re-download ALL issues from Jira. This may take a long time.\n\nContinue?')) return;
+      const res = await fetch('/api/collect/start', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mode, forceFullRefresh}) }).then(r=>r.json());
       if (res.error) { toast(res.error,'error'); return; }
       document.getElementById('log-console').innerHTML = '';
       currentPhaseIdx = -1;
@@ -746,7 +749,7 @@
     async function abortCollect() { await fetch('/api/collect/abort',{method:'POST'}); }
     function updateCollectionUI(state) {
       const running = state.running;
-      document.querySelectorAll('#btn-full,#btn-meta,#btn-issues,#btn-audit').forEach(b => b.disabled = running);
+      document.querySelectorAll('#btn-full,#btn-meta,#btn-issues,#btn-audit,#btn-force').forEach(b => b.disabled = running);
       document.getElementById('btn-abort').style.display = running ? 'inline-flex' : 'none';
       if (state.phase) { document.getElementById('phases-container').style.display = 'block'; updatePhases(state.phase); }
       if (state.log?.length > 0) {
